@@ -1,24 +1,30 @@
 mod database;
 mod clist;
 
-use database::{Contest, init_db, insert_contests, get_upcoming_contests};
+use database::{Contest, init_db, insert_contests, get_upcoming_contests, get_config, save_config, AppConfig};
 use tauri::{State, Manager};
 use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::WindowEvent;
 use std::sync::Mutex;
 use rusqlite::Connection;
+use tauri_plugin_autostart::MacosLauncher;
 
 struct AppState {
     db: Mutex<Connection>,
-    // For a real app, load these from config or env
-    api_key: String,
-    username: String,
 }
 
 #[tauri::command]
 async fn fetch_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, String> {
+    let (api_key, username) = {
+        let conn = state.db.lock().unwrap();
+        match get_config(&conn) {
+            Ok(Some(config)) => (config.api_key, config.username),
+            _ => return Err("API_KEY_MISSING".to_string()),
+        }
+    };
+
     // 1. Fetch from Clist API
-    match clist::fetch_contests(&state.api_key, &state.username).await {
+    match clist::fetch_contests(&api_key, &username).await {
         Ok(contests) => {
             // 2. Save to SQLite Cache
             let conn = state.db.lock().unwrap();
@@ -45,6 +51,18 @@ fn get_cached_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, Strin
 }
 
 #[tauri::command]
+fn get_api_config(state: State<'_, AppState>) -> Result<Option<AppConfig>, String> {
+    let conn = state.db.lock().unwrap();
+    get_config(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_api_config(state: State<'_, AppState>, username: String, api_key: String) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    save_config(&conn, &username, &api_key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn open_main_app(app: tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -56,6 +74,13 @@ fn open_main_app(app: tauri::AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--autostart"])))
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir().expect("Failed to get app data dir");
             std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data dir");
@@ -65,13 +90,39 @@ pub fn run() {
             
             app.manage(AppState {
                 db: Mutex::new(conn),
-                api_key: "a2743998f53694146f4314c79190b7b441118caa".to_string(),
-                username: "Eigenform".to_string(),
             });
+
+            let args: Vec<String> = std::env::args().collect();
+            let is_autostart = args.iter().any(|arg| arg == "--autostart");
+
+            if !is_autostart {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+
+            let quit_i = tauri::menu::MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let show_i = tauri::menu::MenuItem::with_id(app, "show", "Show Main App", true, None::<&str>)?;
+            let menu = tauri::menu::Menu::with_items(app, &[&show_i, &quit_i])?;
 
             let _tray = TrayIconBuilder::new()
                 .tooltip("CP Companion")
                 .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    _ => {}
+                })
                 .on_tray_icon_event(|tray, event| match event {
                     TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } => {
                         let app = tray.app_handle();
@@ -92,7 +143,8 @@ pub fn run() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![fetch_contests, get_cached_contests, open_main_app])
+        .invoke_handler(tauri::generate_handler![fetch_contests, get_cached_contests, open_main_app, get_api_config, save_api_config])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

@@ -19,7 +19,9 @@ struct ClistContest {
 }
 
 pub async fn fetch_contests(api_key: &str, username: &str) -> Result<Vec<Contest>, Box<dyn Error>> {
-    let client = Client::new();
+    let client = Client::builder()
+        .user_agent("CP-Companion/1.0")
+        .build()?;
     
     // Fetch upcoming contests
     let url = format!(
