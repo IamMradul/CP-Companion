@@ -87,17 +87,17 @@ export function CalendarView() {
           const isToday = new Date().toDateString() === cellDate.toDateString();
 
           return (
-            <div key={i} className={`border-r border-b border-white/5 p-1 relative flex flex-col gap-0.5 overflow-hidden ${d.currentMonth ? 'bg-transparent' : 'bg-black/20'}`}>
-              <div className={`text-[10px] text-center mb-0.5 ${isToday ? 'bg-blue-500 text-white rounded-full w-4 h-4 mx-auto flex items-center justify-center' : (d.currentMonth ? 'text-white/70' : 'text-white/20')}`}>
+            <div key={i} className={`border-r border-b border-white/5 p-1 relative flex flex-col gap-0.5 overflow-hidden min-h-0 ${d.currentMonth ? 'bg-transparent' : 'bg-black/20'}`}>
+              <div className={`text-[10px] text-center mb-0.5 shrink-0 ${isToday ? 'bg-blue-500 text-white rounded-full w-4 h-4 mx-auto flex items-center justify-center' : (d.currentMonth ? 'text-white/70' : 'text-white/20')}`}>
                 {d.day}
               </div>
-              <div className="flex flex-col gap-[1px] overflow-y-auto custom-scrollbar flex-1">
+              <div className="flex flex-col gap-[1px] overflow-y-auto custom-scrollbar flex-1 min-h-0">
                 {dayContests.map(c => (
                   <div 
                     key={c.id} 
                     onClick={() => window.open(c.url, '_blank')}
                     title={c.name}
-                    className={`text-[8px] truncate px-1 py-0.5 rounded-sm cursor-pointer ${getPlatformColor(c.platform)}`}
+                    className={`text-[8px] truncate px-1 py-0.5 rounded-sm cursor-pointer shrink-0 ${getPlatformColor(c.platform)}`}
                   >
                     {c.name}
                   </div>

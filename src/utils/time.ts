@@ -33,3 +33,22 @@ export function formatContestDate(dateStr: string): string {
     minute: "2-digit",
   });
 }
+
+export function formatDateHeader(dateStr: string): string {
+  const target = new Date(dateStr);
+  const now = new Date();
+  
+  // Strip time for day comparison
+  const targetDate = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+  const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.round((targetDate.getTime() - nowDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Tomorrow";
+  
+  return target.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
