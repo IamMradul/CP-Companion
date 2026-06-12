@@ -10,6 +10,15 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { enable, isEnabled, disable } from '@tauri-apps/plugin-autostart';
 import "./App.css";
 
+const SUPPORTED_PLATFORMS = [
+  { id: "codeforces.com", name: "Codeforces" },
+  { id: "leetcode.com", name: "LeetCode" },
+  { id: "atcoder.jp", name: "AtCoder" },
+  { id: "codechef.com", name: "CodeChef" },
+  { id: "geeksforgeeks.org", name: "GeeksforGeeks" },
+  { id: "hackerrank.com", name: "HackerRank" }
+];
+
 function App() {
   const [view, setView] = useState<"widget" | "calendar" | "settings">("widget");
   const [windowLabel, setWindowLabel] = useState<string | null>(null);
@@ -20,6 +29,11 @@ function App() {
   const [apiKey, setApiKey] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [dismissConfigModal, setDismissConfigModal] = useState(false);
+  const [availablePlatforms, setAvailablePlatforms] = useState<{id: string, name: string}[]>(SUPPORTED_PLATFORMS);
+  const [platformSearchQuery, setPlatformSearchQuery] = useState("");
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(
+    SUPPORTED_PLATFORMS.map(p => p.id)
+  );
 
   useEffect(() => {
     // Determine which window we are rendering
@@ -34,8 +48,34 @@ function App() {
             setAutostartEnabled(autoStartStatus);
             const config: any = await invoke("get_api_config");
             if (config) {
-              setUsername(config.username);
-              setApiKey(config.api_key);
+              setUsername(config.username || "");
+              const currentApiKey = config.apiKey || config.api_key || "";
+              setApiKey(currentApiKey);
+              
+              if (config.platforms && Array.isArray(config.platforms)) {
+                setSelectedPlatforms(config.platforms);
+              }
+              if (config.username && currentApiKey) {
+                try {
+                  const platforms: any[] = await invoke("get_available_platforms");
+                  if (platforms && platforms.length > 0) {
+                    const formatted = platforms.map(p => ({ 
+                      id: p.name, 
+                      name: p.name.split('.')[0].replace(/^\w/, (c: string) => c.toUpperCase()) 
+                    }));
+                    formatted.sort((a, b) => {
+                      const aSel = config.platforms?.includes(a.id);
+                      const bSel = config.platforms?.includes(b.id);
+                      if (aSel && !bSel) return -1;
+                      if (!aSel && bSel) return 1;
+                      return a.name.localeCompare(b.name);
+                    });
+                    setAvailablePlatforms(formatted);
+                  }
+                } catch (e) {
+                  console.error("Failed to fetch dynamic platforms:", e);
+                }
+              }
             }
           } catch (err) {
             console.error("Failed to load settings", err);
@@ -77,7 +117,7 @@ function App() {
   const handleSaveConfig = async () => {
     setSaveSuccess(false);
     try {
-      await invoke("save_api_config", { username, apiKey });
+      await invoke("save_api_config", { username, apiKey, platforms: selectedPlatforms });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
       fetchContests(); // Refetch with new credentials
@@ -88,12 +128,80 @@ function App() {
 
   const handleClearConfig = async () => {
     try {
-      await invoke("save_api_config", { username: "", apiKey: "" });
+      await invoke("save_api_config", { username: "", apiKey: "", platforms: SUPPORTED_PLATFORMS.map(p => p.id) });
       setUsername("");
       setApiKey("");
+      setSelectedPlatforms(SUPPORTED_PLATFORMS.map(p => p.id));
       fetchContests(); // Refetch to reset state
     } catch (e) {
       console.error("Failed to clear config:", e);
+    }
+  };
+
+  const togglePlatform = async (platformId: string) => {
+    const newPlatforms = selectedPlatforms.includes(platformId)
+      ? selectedPlatforms.filter((id) => id !== platformId)
+      : [...selectedPlatforms, platformId];
+    
+    setSelectedPlatforms(newPlatforms);
+    
+    // Auto-save if they have API credentials configured
+    if (username && apiKey) {
+      try {
+        await invoke("save_api_config", { username, apiKey, platforms: newPlatforms });
+        fetchContests();
+      } catch (e) {
+        console.error("Failed to save platforms:", e);
+      }
+    }
+  };
+
+  const filteredPlatforms = availablePlatforms.filter(p => 
+    p.name.toLowerCase().includes(platformSearchQuery.toLowerCase()) || 
+    p.id.toLowerCase().includes(platformSearchQuery.toLowerCase())
+  ).sort((a, b) => {
+    const aSel = selectedPlatforms.includes(a.id);
+    const bSel = selectedPlatforms.includes(b.id);
+    if (aSel && !bSel) return -1;
+    if (!aSel && bSel) return 1;
+
+    const aPop = SUPPORTED_PLATFORMS.findIndex(p => p.id === a.id);
+    const bPop = SUPPORTED_PLATFORMS.findIndex(p => p.id === b.id);
+    const aIsPop = aPop !== -1;
+    const bIsPop = bPop !== -1;
+
+    if (aIsPop && !bIsPop) return -1;
+    if (!aIsPop && bIsPop) return 1;
+    if (aIsPop && bIsPop) return aPop - bPop;
+
+    return a.name.localeCompare(b.name);
+  });
+
+  const selectAll = async () => {
+    const allIds = filteredPlatforms.map(p => p.id);
+    const newPlatforms = Array.from(new Set([...selectedPlatforms, ...allIds]));
+    setSelectedPlatforms(newPlatforms);
+    if (username && apiKey) {
+      try {
+        await invoke("save_api_config", { username, apiKey, platforms: newPlatforms });
+        fetchContests();
+      } catch (e) {
+        console.error("Failed to save platforms:", e);
+      }
+    }
+  };
+
+  const unselectAll = async () => {
+    const filteredIds = new Set(filteredPlatforms.map(p => p.id));
+    const newPlatforms = selectedPlatforms.filter(id => !filteredIds.has(id));
+    setSelectedPlatforms(newPlatforms);
+    if (username && apiKey) {
+      try {
+        await invoke("save_api_config", { username, apiKey, platforms: newPlatforms });
+        fetchContests();
+      } catch (e) {
+        console.error("Failed to save platforms:", e);
+      }
     }
   };
 
@@ -231,14 +339,61 @@ function App() {
                     <li>Copy your username and click "Authorization" to get your API Key.</li>
                   </ol>
                 </div>
-
-                <div className="flex gap-2 mt-4">
+                <div className="flex gap-2 mt-6">
                   <button onClick={handleSaveConfig} className={`flex-1 text-sm py-2 rounded transition-colors ${saveSuccess ? 'bg-green-500/20 text-green-400' : 'bg-white/10 hover:bg-white/20 text-white'}`}>
                     {saveSuccess ? "Saved successfully!" : "Save Configuration"}
                   </button>
                   <button onClick={handleClearConfig} className="text-sm py-2 px-4 rounded transition-colors bg-red-500/10 hover:bg-red-500/20 text-red-400" title="Remove Configuration">
                     Remove
                   </button>
+                </div>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col min-h-[300px]">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-semibold text-white/70 uppercase tracking-widest">Preferred Platforms</h3>
+                  <div className="flex gap-2">
+                    <button onClick={selectAll} className="text-[10px] bg-white/5 hover:bg-white/10 border border-white/5 text-white/70 px-2 py-1 rounded transition-colors">Select All</button>
+                    <button onClick={unselectAll} className="text-[10px] bg-white/5 hover:bg-white/10 border border-white/5 text-white/70 px-2 py-1 rounded transition-colors">Clear All</button>
+                  </div>
+                </div>
+                <input 
+                  type="text"
+                  placeholder="Search platforms..."
+                  value={platformSearchQuery}
+                  onChange={e => setPlatformSearchQuery(e.target.value)}
+                  className="w-full bg-black/20 border border-white/10 rounded p-2 text-sm text-white focus:border-blue-500 outline-none transition-colors mb-3"
+                />
+                <div className="grid grid-cols-2 gap-3 max-h-60 overflow-y-auto custom-scrollbar pr-1 flex-1">
+                  {filteredPlatforms.map(platform => (
+                    <label key={platform.id} className="flex items-center gap-2.5 cursor-pointer group bg-black/20 hover:bg-black/40 p-2 rounded-lg border border-white/5 hover:border-white/10 transition-all">
+                      <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${selectedPlatforms.includes(platform.id) ? 'bg-blue-500 border-blue-500' : 'border-white/20 group-hover:border-white/40 bg-black/40'}`}>
+                        {selectedPlatforms.includes(platform.id) && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        className="hidden" 
+                        checked={selectedPlatforms.includes(platform.id)}
+                        onChange={() => togglePlatform(platform.id)}
+                      />
+                      <img 
+                        src={`https://www.google.com/s2/favicons?domain=${platform.id}&sz=64`} 
+                        alt={platform.name} 
+                        className="w-4 h-4 rounded-sm object-contain"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null; // Prevent infinite loop
+                          e.currentTarget.src = 'https://www.google.com/s2/favicons?domain=example.com&sz=64';
+                          e.currentTarget.style.opacity = '0.5';
+                        }}
+                      />
+                      <span className="text-sm text-white/70 group-hover:text-white transition-colors truncate">{platform.name}</span>
+                    </label>
+                  ))}
+                  {filteredPlatforms.length === 0 && (
+                    <div className="col-span-2 text-center py-4 text-white/40 text-sm">
+                      No platforms found.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

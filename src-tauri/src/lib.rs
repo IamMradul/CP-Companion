@@ -1,7 +1,7 @@
 mod database;
 mod clist;
 
-use database::{Contest, init_db, insert_contests, get_upcoming_contests, get_config, save_config, AppConfig};
+use database::{Contest, init_db, insert_contests, get_upcoming_contests, get_config, save_config};
 use tauri::{State, Manager};
 use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::WindowEvent;
@@ -15,21 +15,21 @@ struct AppState {
 
 #[tauri::command]
 async fn fetch_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, String> {
-    let (api_key, username) = {
+    let (api_key, username, platforms) = {
         let conn = state.db.lock().unwrap();
         match get_config(&conn) {
             Ok(Some(config)) => {
                 if config.api_key.trim().is_empty() || config.username.trim().is_empty() {
                     return Err("API_KEY_MISSING".to_string());
                 }
-                (config.api_key, config.username)
+                (config.api_key, config.username, config.platforms)
             },
             _ => return Err("API_KEY_MISSING".to_string()),
         }
     };
 
     // 1. Fetch from Clist API
-    match clist::fetch_contests(&api_key, &username).await {
+    match clist::fetch_contests(&api_key, &username, &platforms).await {
         Ok(contests) => {
             // 2. Save to SQLite Cache
             let conn = state.db.lock().unwrap();
@@ -55,16 +55,51 @@ fn get_cached_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, Strin
     get_upcoming_contests(&conn).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn get_api_config(state: State<'_, AppState>) -> Result<Option<AppConfig>, String> {
-    let conn = state.db.lock().unwrap();
-    get_config(&conn).map_err(|e| e.to_string())
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiConfigResponse {
+    username: String,
+    api_key: String,
+    platforms: Vec<String>,
 }
 
 #[tauri::command]
-fn save_api_config(state: State<'_, AppState>, username: String, api_key: String) -> Result<(), String> {
+fn get_api_config(state: State<'_, AppState>) -> Result<Option<ApiConfigResponse>, String> {
     let conn = state.db.lock().unwrap();
-    save_config(&conn, &username, &api_key).map_err(|e| e.to_string())
+    match get_config(&conn) {
+        Ok(Some(config)) => Ok(Some(ApiConfigResponse {
+            username: config.username,
+            api_key: config.api_key,
+            platforms: config.platforms.split(',').filter(|s| !s.is_empty()).map(|s| s.to_string()).collect(),
+        })),
+        Ok(None) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+fn save_api_config(state: State<'_, AppState>, username: String, api_key: String, platforms: Vec<String>) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    let platforms_str = platforms.join(",");
+    save_config(&conn, &username, &api_key, &platforms_str).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_available_platforms(state: State<'_, AppState>) -> Result<Vec<clist::ClistPlatform>, String> {
+    let (api_key, username) = {
+        let conn = state.db.lock().unwrap();
+        match get_config(&conn) {
+            Ok(Some(config)) => {
+                if config.api_key.trim().is_empty() || config.username.trim().is_empty() {
+                    return Err("API_KEY_MISSING".to_string());
+                }
+                (config.api_key, config.username)
+            },
+            _ => return Err("API_KEY_MISSING".to_string()),
+        }
+    };
+
+    clist::fetch_available_platforms(&api_key, &username).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -148,7 +183,7 @@ pub fn run() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![fetch_contests, get_cached_contests, open_main_app, get_api_config, save_api_config])
+        .invoke_handler(tauri::generate_handler![fetch_contests, get_cached_contests, open_main_app, get_api_config, save_api_config, get_available_platforms])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

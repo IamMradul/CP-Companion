@@ -17,6 +17,7 @@ pub struct Contest {
 pub struct AppConfig {
     pub username: String,
     pub api_key: String,
+    pub platforms: String,
 }
 
 // Temporary workaround for clist API sometimes sending ints as names (rare but possible)
@@ -46,12 +47,18 @@ pub fn init_db(db_path: &std::path::Path) -> Result<Connection> {
         [],
     )?;
 
+    // Migration: add platforms column if it doesn't exist
+    let _ = conn.execute("ALTER TABLE app_config ADD COLUMN platforms TEXT NOT NULL DEFAULT 'codeforces.com,leetcode.com,atcoder.jp,codechef.com'", []);
+
     Ok(conn)
 }
 
 pub fn insert_contests(conn: &Connection, contests: &[Contest]) -> Result<()> {
+    // Clear old cache first so deselected platforms are removed
+    conn.execute("DELETE FROM contests", [])?;
+
     let mut stmt = conn.prepare(
-        "INSERT OR REPLACE INTO contests (id, name, platform, start_time, duration_seconds, url)
+        "INSERT INTO contests (id, name, platform, start_time, duration_seconds, url)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
     )?;
 
@@ -97,23 +104,25 @@ pub fn get_upcoming_contests(conn: &Connection) -> Result<Vec<Contest>> {
 }
 
 pub fn get_config(conn: &Connection) -> Result<Option<AppConfig>> {
-    let mut stmt = conn.prepare("SELECT username, api_key FROM app_config WHERE id = 1")?;
+    let mut stmt = conn.prepare("SELECT username, api_key, platforms FROM app_config WHERE id = 1")?;
     let mut rows = stmt.query([])?;
 
     if let Some(row) = rows.next()? {
+        let platforms: rusqlite::Result<String> = row.get(2);
         Ok(Some(AppConfig {
             username: row.get(0)?,
             api_key: row.get(1)?,
+            platforms: platforms.unwrap_or_else(|_| "codeforces.com,leetcode.com,atcoder.jp,codechef.com".to_string()),
         }))
     } else {
         Ok(None)
     }
 }
 
-pub fn save_config(conn: &Connection, username: &str, api_key: &str) -> Result<()> {
+pub fn save_config(conn: &Connection, username: &str, api_key: &str, platforms: &str) -> Result<()> {
     conn.execute(
-        "INSERT OR REPLACE INTO app_config (id, username, api_key) VALUES (1, ?1, ?2)",
-        [username, api_key],
+        "INSERT OR REPLACE INTO app_config (id, username, api_key, platforms) VALUES (1, ?1, ?2, ?3)",
+        [username, api_key, platforms],
     )?;
     Ok(())
 }
