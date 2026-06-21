@@ -1,8 +1,8 @@
 [package]
 name = "cp-companion"
-version = "0.1.0"
+version = "3.0.0"
 description = "A Tauri App"
-authors = ["you"]
+authors = ["Mradul Gupta", "Siddhart Paul"]
 edition = "2021"
 
 [lib]
