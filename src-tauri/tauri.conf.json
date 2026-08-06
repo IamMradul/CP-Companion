@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "cp-companion",
-  "version": "0.1.0",
-  "identifier": "com.siddharth.cp-companion",
+  "version": "3.0.1",
+  "identifier": "com.mradul.cp-companion",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -14,8 +14,8 @@
       {
         "title": "CP Companion",
         "label": "widget",
-        "width": 250,
-        "height": 80,
+        "width": 320,
+        "height": 300,
         "resizable": true,
         "fullscreen": false,
         "transparent": true,

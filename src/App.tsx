@@ -59,10 +59,13 @@ function App() {
                 try {
                   const platforms: any[] = await invoke("get_available_platforms");
                   if (platforms && platforms.length > 0) {
-                    const formatted = platforms.map(p => ({ 
-                      id: p.name, 
-                      name: p.name.split('.')[0].replace(/^\w/, (c: string) => c.toUpperCase()) 
-                    }));
+                    const formatted = platforms.map(p => {
+                      const supported = SUPPORTED_PLATFORMS.find(s => s.id === p.name);
+                      return { 
+                        id: p.name, 
+                        name: supported ? supported.name : p.name 
+                      };
+                    });
                     formatted.sort((a, b) => {
                       const aSel = config.platforms?.includes(a.id);
                       const bSel = config.platforms?.includes(b.id);
@@ -290,6 +293,7 @@ function App() {
                     <li>Create an account at <a href="https://clist.by" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">clist.by</a></li>
                     <li>Log in and go to the <a href="https://clist.by/api/v4/doc/" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">API Documentation page</a></li>
                     <li>Copy your username and click "Authorization" to get your API Key.</li>
+                    <li>Need help? Watch the <a href="https://www.youtube.com/watch?v=ilP9Ci6ICvM" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">tutorial video</a>.</li>
                   </ol>
                 </div>
               </div>
@@ -337,6 +341,7 @@ function App() {
                     <li>Create an account at <a href="https://clist.by" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">clist.by</a></li>
                     <li>Log in and go to the <a href="https://clist.by/api/v4/doc/" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">API Documentation page</a></li>
                     <li>Copy your username and click "Authorization" to get your API Key.</li>
+                    <li>Need help? Watch the <a href="https://www.youtube.com/watch?v=ilP9Ci6ICvM" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">tutorial video</a>.</li>
                   </ol>
                 </div>
                 <div className="flex gap-2 mt-6">

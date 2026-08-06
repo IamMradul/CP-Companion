@@ -39,7 +39,13 @@ pub async fn fetch_contests(api_key: &str, username: &str, platforms: &str) -> R
         url.push_str(&format!("&resource__in={}", platforms));
     }
 
-    let res = client.get(&url).send().await?.json::<ClistResponse>().await?;
+    let res = client.get(&url).send().await?;
+    if !res.status().is_success() {
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        return Err(format!("API Error: {} - {}", status, text).into());
+    }
+    let res = res.json::<ClistResponse>().await?;
 
     let contests = res.objects.into_iter().map(|c| Contest {
         id: c.id,
@@ -83,7 +89,13 @@ pub async fn fetch_available_platforms(api_key: &str, username: &str) -> Result<
             offset
         );
 
-        let mut res = client.get(&url).send().await?.json::<ClistResourceResponse>().await?;
+        let res = client.get(&url).send().await?;
+        if !res.status().is_success() {
+            let status = res.status();
+            let text = res.text().await.unwrap_or_default();
+            return Err(format!("API Error: {} - {}", status, text).into());
+        }
+        let mut res = res.json::<ClistResourceResponse>().await?;
         let count = res.objects.len();
         all_platforms.append(&mut res.objects);
 
