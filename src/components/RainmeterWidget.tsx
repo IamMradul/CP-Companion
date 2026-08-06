@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useContestStore } from "../stores/useContestStore";
 import { formatTimeRemaining } from "../utils/time";
-import { GripVertical, X } from "lucide-react";
+import { GripVertical, X, ExternalLink } from "lucide-react";
 
 export function RainmeterWidget() {
   const { contests, isLoading } = useContestStore();
@@ -39,11 +40,12 @@ export function RainmeterWidget() {
     return () => clearInterval(timer);
   }, []);
 
-  const upcoming = contests.length > 0 ? contests[0] : null;
-
-  const openMainApp = () => {
-    invoke("open_main_app");
-  };
+  const now = new Date().getTime();
+  const upcoming = contests.filter((c) => {
+    const target = new Date(c.startTime).getTime();
+    const diff = target - now;
+    return diff > 0 && diff <= 24 * 60 * 60 * 1000;
+  });
 
   const closeWidget = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -64,7 +66,7 @@ export function RainmeterWidget() {
     }
   };
 
-  if (isLoading && !upcoming) {
+  if (isLoading && upcoming.length === 0) {
     return (
       <div 
         onMouseDown={startDrag}
@@ -76,37 +78,47 @@ export function RainmeterWidget() {
   }
 
   return (
-    <div className="w-full h-full bg-black/40 backdrop-blur-md rounded-xl border border-white/10 flex items-center shadow-xl group hover:bg-black/50 hover:border-white/20 transition-all overflow-hidden relative">
+    <div className="w-screen h-screen bg-black/40 backdrop-blur-2xl rounded-xl border border-white/10 flex items-stretch shadow-2xl overflow-hidden relative group/widget">
       {/* Drag Handle */}
       <div 
         onMouseDown={startDrag}
-        className="h-full px-1.5 flex flex-col justify-center cursor-grab active:cursor-grabbing bg-white/5 hover:bg-white/10 border-r border-white/5 transition-colors"
+        className="w-4 shrink-0 flex flex-col justify-center cursor-grab active:cursor-grabbing hover:bg-white/5 border-r border-white/5 transition-colors"
         title="Drag to move"
       >
-        <GripVertical className="w-3.5 h-3.5 text-white/30 pointer-events-none" />
+        <GripVertical className="w-3 h-3 text-white/20 mx-auto pointer-events-none opacity-0 group-hover/widget:opacity-100 transition-opacity" />
       </div>
 
       {/* Clickable Area */}
-      <div 
-        onClick={openMainApp}
-        className="flex-1 flex flex-col justify-center px-3 h-full cursor-pointer pr-6"
-      >
-        {upcoming ? (
-          <>
-            <div className="flex items-center justify-between pointer-events-none">
-              <span className="text-[10px] font-bold tracking-widest text-white/50 uppercase">
-                {upcoming.platform}
-              </span>
-              <span className="text-[10px] font-mono font-semibold text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
-                {formatTimeRemaining(upcoming.startTime)}
-              </span>
+      <div className="flex-1 flex flex-col justify-start px-1.5 py-2 gap-1 overflow-y-auto custom-scrollbar min-h-0 pr-1">
+        {upcoming.length > 0 ? (
+          upcoming.map((contest) => (
+            <div
+              key={contest.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                openUrl(contest.url);
+              }}
+              className="flex flex-col group/item hover:bg-white/[0.04] p-2.5 rounded-lg cursor-pointer transition-colors border border-transparent"
+              title={contest.url}
+            >
+              <div className="flex items-center justify-between pointer-events-none mb-1.5">
+                <span className="text-[10px] font-medium tracking-wider text-white/40 uppercase flex items-center gap-1">
+                  {contest.platform}
+                </span>
+                <span className="text-[10.5px] font-mono font-medium text-white/70 bg-white/10 px-1.5 py-0.5 rounded-md">
+                  {formatTimeRemaining(contest.startTime)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-[12.5px] font-medium text-white/80 truncate pointer-events-none group-hover/item:text-white leading-tight">
+                  {contest.name}
+                </h3>
+                <ExternalLink className="w-3 h-3 text-white/30 group-hover/item:text-white/70 shrink-0 transition-opacity opacity-0 group-hover/item:opacity-100" />
+              </div>
             </div>
-            <h3 className="text-xs font-medium text-white/90 mt-1 truncate pointer-events-none group-hover:text-white">
-              {upcoming.name}
-            </h3>
-          </>
+          ))
         ) : (
-          <div className="text-xs text-white/50 text-center pointer-events-none">
+          <div className="text-xs text-white/40 text-center pointer-events-none flex-1 flex items-center justify-center min-h-[44px]">
             No upcoming contests
           </div>
         )}
@@ -115,7 +127,7 @@ export function RainmeterWidget() {
       {/* Close Button */}
       <button 
         onClick={closeWidget}
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-white/30 hover:text-white/80 hover:bg-white/10 rounded transition-colors opacity-0 group-hover:opacity-100 z-50 cursor-pointer"
+        className="absolute right-1.5 top-1.5 p-1 text-white/20 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors opacity-0 group-hover/widget:opacity-100 z-50 cursor-pointer"
         title="Hide Widget"
       >
         <X className="w-3 h-3 pointer-events-none" />
