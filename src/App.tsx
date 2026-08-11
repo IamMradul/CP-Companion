@@ -8,6 +8,7 @@ import { useContestStore } from "./stores/useContestStore";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { enable, isEnabled, disable } from '@tauri-apps/plugin-autostart';
+import { UpdateNotification } from "./components/UpdateNotification";
 import "./App.css";
 
 const SUPPORTED_PLATFORMS = [
@@ -221,6 +222,8 @@ function App() {
     <div className="h-screen w-screen bg-[#111] flex flex-col dark text-foreground">
       {/* Main Glass Panel */}
       <div className="flex-1 flex flex-col overflow-hidden relative border border-white/5 bg-[#1a1a1a]">
+        {/* Update Notification */}
+        <UpdateNotification />
         {/* Header */}
         <header 
           data-tauri-drag-region 

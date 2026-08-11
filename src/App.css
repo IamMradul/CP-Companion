@@ -5,6 +5,12 @@
   --color-glass-hover: rgba(255, 255, 255, 0.1);
   --color-glass-border: rgba(255, 255, 255, 0.1);
   --color-glass-border-hover: rgba(255, 255, 255, 0.2);
+  --animate-shimmer: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 @layer base {

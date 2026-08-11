@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useContestStore } from "../stores/useContestStore";
 import { formatTimeRemaining } from "../utils/time";
-import { GripVertical, X, ExternalLink } from "lucide-react";
+import { GripVertical, X, ExternalLink, Maximize2 } from "lucide-react";
 
 export function RainmeterWidget() {
   const { contests, isLoading } = useContestStore();
@@ -41,11 +41,20 @@ export function RainmeterWidget() {
   }, []);
 
   const now = new Date().getTime();
-  const upcoming = contests.filter((c) => {
+  const within24h = contests.filter((c) => {
     const target = new Date(c.startTime).getTime();
     const diff = target - now;
     return diff > 0 && diff <= 24 * 60 * 60 * 1000;
   });
+
+  // If no contests within 24h, show the next 2 upcoming contests instead
+  const isFallback = within24h.length === 0;
+  const upcoming = isFallback
+    ? contests
+        .filter((c) => new Date(c.startTime).getTime() - now > 0)
+        .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+        .slice(0, 2)
+    : within24h;
 
   const closeWidget = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -54,6 +63,16 @@ export function RainmeterWidget() {
       await getCurrentWindow().hide();
     } catch (err) {
       console.error("Failed to hide window:", err);
+    }
+  };
+
+  const openMainApp = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await invoke("open_main_app");
+    } catch (err) {
+      console.error("Failed to open main app:", err);
     }
   };
 
@@ -78,7 +97,7 @@ export function RainmeterWidget() {
   }
 
   return (
-    <div className="w-screen h-screen bg-black/40 backdrop-blur-2xl rounded-xl border border-white/10 flex items-stretch shadow-2xl overflow-hidden relative group/widget">
+    <div onDoubleClick={openMainApp} className="w-screen h-screen bg-black/40 backdrop-blur-2xl rounded-xl border border-white/10 flex items-stretch shadow-2xl overflow-hidden relative group/widget">
       {/* Drag Handle */}
       <div 
         onMouseDown={startDrag}
@@ -90,6 +109,11 @@ export function RainmeterWidget() {
 
       {/* Clickable Area */}
       <div className="flex-1 flex flex-col justify-start px-1.5 py-2 gap-1 overflow-y-auto custom-scrollbar min-h-0 pr-1">
+        {isFallback && upcoming.length > 0 && (
+          <div className="text-[9px] font-medium tracking-wider text-white/25 uppercase text-center py-0.5 pointer-events-none">
+            Next upcoming
+          </div>
+        )}
         {upcoming.length > 0 ? (
           upcoming.map((contest) => (
             <div
@@ -98,7 +122,7 @@ export function RainmeterWidget() {
                 e.stopPropagation();
                 openUrl(contest.url);
               }}
-              className="flex flex-col group/item hover:bg-white/[0.04] p-2.5 rounded-lg cursor-pointer transition-colors border border-transparent"
+              className={`flex flex-col group/item hover:bg-white/[0.04] p-2.5 rounded-lg cursor-pointer transition-colors border border-transparent ${isFallback ? 'opacity-70' : ''}`}
               title={contest.url}
             >
               <div className="flex items-center justify-between pointer-events-none mb-1.5">
@@ -123,6 +147,15 @@ export function RainmeterWidget() {
           </div>
         )}
       </div>
+
+      {/* Open Main App Button */}
+      <button 
+        onClick={openMainApp}
+        className="absolute left-5 bottom-1.5 p-1 text-white/20 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors opacity-0 group-hover/widget:opacity-100 z-50 cursor-pointer"
+        title="Open App"
+      >
+        <Maximize2 className="w-3 h-3 pointer-events-none" />
+      </button>
 
       {/* Close Button */}
       <button 
