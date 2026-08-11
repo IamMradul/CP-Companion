@@ -210,6 +210,37 @@ pub fn run() {
                 db: Mutex::new(conn),
             });
 
+            // Make the widget window immune to "Show Desktop" (Win+D / 3-finger swipe)
+            // by removing minimize box styles, setting WS_EX_TOOLWINDOW, and setting Progman as its owner (GWLP_HWNDPARENT).
+            // Setting owner (rather than parent via SetParent) keeps it as a top-level window so it remains fully interactable.
+            #[cfg(target_os = "windows")]
+            {
+                use windows_sys::Win32::UI::WindowsAndMessaging::{
+                    FindWindowW, SetWindowLongPtrW, GetWindowLongPtrW,
+                    GWL_STYLE, GWL_EXSTYLE, GWLP_HWNDPARENT,
+                    WS_MINIMIZEBOX, WS_MAXIMIZEBOX, WS_EX_TOOLWINDOW, WS_EX_APPWINDOW,
+                };
+
+                if let Some(widget_window) = app.get_webview_window("widget") {
+                    let hwnd = widget_window.hwnd().unwrap().0 as isize;
+                    unsafe {
+                        let style = GetWindowLongPtrW(hwnd as _, GWL_STYLE);
+                        let new_style = style & !(WS_MINIMIZEBOX as isize) & !(WS_MAXIMIZEBOX as isize);
+                        SetWindowLongPtrW(hwnd as _, GWL_STYLE, new_style);
+
+                        let ex_style = GetWindowLongPtrW(hwnd as _, GWL_EXSTYLE);
+                        let new_ex_style = (ex_style & !(WS_EX_APPWINDOW as isize)) | (WS_EX_TOOLWINDOW as isize);
+                        SetWindowLongPtrW(hwnd as _, GWL_EXSTYLE, new_ex_style);
+
+                        let progman_name: Vec<u16> = "Progman".encode_utf16().chain(std::iter::once(0)).collect();
+                        let progman = FindWindowW(progman_name.as_ptr(), std::ptr::null());
+                        if !progman.is_null() {
+                            SetWindowLongPtrW(hwnd as _, GWLP_HWNDPARENT, progman as isize);
+                        }
+                    }
+                }
+            }
+
             let args: Vec<String> = std::env::args().collect();
             let is_autostart = args.iter().any(|arg| arg == "--autostart");
 
