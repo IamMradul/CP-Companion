@@ -1,12 +1,12 @@
-mod database;
 mod clist;
+mod database;
 
-use database::{Contest, init_db, insert_contests, get_upcoming_contests, get_config, save_config};
-use tauri::{State, Manager};
-use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
-use tauri::WindowEvent;
-use std::sync::Mutex;
+use database::{get_config, get_upcoming_contests, init_db, insert_contests, save_config, Contest};
 use rusqlite::Connection;
+use std::sync::Mutex;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::WindowEvent;
+use tauri::{Manager, State};
 use tauri_plugin_autostart::MacosLauncher;
 
 struct AppState {
@@ -23,7 +23,7 @@ async fn fetch_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, Stri
                     return Err("API_KEY_MISSING".to_string());
                 }
                 (config.api_key, config.username, config.platforms)
-            },
+            }
             _ => return Err("API_KEY_MISSING".to_string()),
         }
     };
@@ -36,12 +36,15 @@ async fn fetch_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, Stri
             if let Err(e) = insert_contests(&conn, &contests) {
                 eprintln!("Failed to cache contests: {}", e);
             }
-            
+
             // 3. Return updated contests
             Ok(contests)
         }
         Err(e) => {
-            eprintln!("Failed to fetch from Clist API: {}. Falling back to cache.", e);
+            eprintln!(
+                "Failed to fetch from Clist API: {}. Falling back to cache.",
+                e
+            );
             // Fallback to cache
             let conn = state.db.lock().unwrap();
             get_upcoming_contests(&conn).map_err(|e| e.to_string())
@@ -70,7 +73,12 @@ fn get_api_config(state: State<'_, AppState>) -> Result<Option<ApiConfigResponse
         Ok(Some(config)) => Ok(Some(ApiConfigResponse {
             username: config.username,
             api_key: config.api_key,
-            platforms: config.platforms.split(',').filter(|s| !s.is_empty()).map(|s| s.to_string()).collect(),
+            platforms: config
+                .platforms
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect(),
         })),
         Ok(None) => Ok(None),
         Err(e) => Err(e.to_string()),
@@ -78,14 +86,21 @@ fn get_api_config(state: State<'_, AppState>) -> Result<Option<ApiConfigResponse
 }
 
 #[tauri::command]
-fn save_api_config(state: State<'_, AppState>, username: String, api_key: String, platforms: Vec<String>) -> Result<(), String> {
+fn save_api_config(
+    state: State<'_, AppState>,
+    username: String,
+    api_key: String,
+    platforms: Vec<String>,
+) -> Result<(), String> {
     let conn = state.db.lock().unwrap();
     let platforms_str = platforms.join(",");
     save_config(&conn, &username, &api_key, &platforms_str).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_available_platforms(state: State<'_, AppState>) -> Result<Vec<clist::ClistPlatform>, String> {
+async fn get_available_platforms(
+    state: State<'_, AppState>,
+) -> Result<Vec<clist::ClistPlatform>, String> {
     let (api_key, username) = {
         let conn = state.db.lock().unwrap();
         match get_config(&conn) {
@@ -94,12 +109,14 @@ async fn get_available_platforms(state: State<'_, AppState>) -> Result<Vec<clist
                     return Err("API_KEY_MISSING".to_string());
                 }
                 (config.api_key, config.username)
-            },
+            }
             _ => return Err("API_KEY_MISSING".to_string()),
         }
     };
 
-    clist::fetch_available_platforms(&api_key, &username).await.map_err(|e| e.to_string())
+    clist::fetch_available_platforms(&api_key, &username)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[derive(serde::Serialize)]
@@ -154,10 +171,7 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
         .await
         .map_err(|e| format!("Failed to parse update response: {}", e))?;
 
-    let tag_name = resp["tag_name"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let tag_name = resp["tag_name"].as_str().unwrap_or("").to_string();
     let html_url = resp["html_url"]
         .as_str()
         .unwrap_or("https://github.com/IamMradul/CP-Companion/releases")
@@ -191,8 +205,12 @@ fn open_main_app(app: tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--autostart"])))
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -200,12 +218,15 @@ pub fn run() {
             }
         }))
         .setup(|app| {
-            let app_data_dir = app.path().app_data_dir().expect("Failed to get app data dir");
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
+                .expect("Failed to get app data dir");
             std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data dir");
             let db_path = app_data_dir.join("cp_companion.db");
-            
+
             let conn = init_db(&db_path).expect("Failed to initialize database");
-            
+
             app.manage(AppState {
                 db: Mutex::new(conn),
             });
@@ -216,23 +237,26 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             {
                 use windows_sys::Win32::UI::WindowsAndMessaging::{
-                    FindWindowW, SetWindowLongPtrW, GetWindowLongPtrW,
-                    GWL_STYLE, GWL_EXSTYLE, GWLP_HWNDPARENT,
-                    WS_MINIMIZEBOX, WS_MAXIMIZEBOX, WS_EX_TOOLWINDOW, WS_EX_APPWINDOW,
+                    FindWindowW, GetWindowLongPtrW, SetWindowLongPtrW, GWLP_HWNDPARENT,
+                    GWL_EXSTYLE, GWL_STYLE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX,
+                    WS_MINIMIZEBOX,
                 };
 
                 if let Some(widget_window) = app.get_webview_window("widget") {
                     let hwnd = widget_window.hwnd().unwrap().0 as isize;
                     unsafe {
                         let style = GetWindowLongPtrW(hwnd as _, GWL_STYLE);
-                        let new_style = style & !(WS_MINIMIZEBOX as isize) & !(WS_MAXIMIZEBOX as isize);
+                        let new_style =
+                            style & !(WS_MINIMIZEBOX as isize) & !(WS_MAXIMIZEBOX as isize);
                         SetWindowLongPtrW(hwnd as _, GWL_STYLE, new_style);
 
                         let ex_style = GetWindowLongPtrW(hwnd as _, GWL_EXSTYLE);
-                        let new_ex_style = (ex_style & !(WS_EX_APPWINDOW as isize)) | (WS_EX_TOOLWINDOW as isize);
+                        let new_ex_style =
+                            (ex_style & !(WS_EX_APPWINDOW as isize)) | (WS_EX_TOOLWINDOW as isize);
                         SetWindowLongPtrW(hwnd as _, GWL_EXSTYLE, new_ex_style);
 
-                        let progman_name: Vec<u16> = "Progman".encode_utf16().chain(std::iter::once(0)).collect();
+                        let progman_name: Vec<u16> =
+                            "Progman".encode_utf16().chain(std::iter::once(0)).collect();
                         let progman = FindWindowW(progman_name.as_ptr(), std::ptr::null());
                         if !progman.is_null() {
                             SetWindowLongPtrW(hwnd as _, GWLP_HWNDPARENT, progman as isize);
@@ -252,7 +276,8 @@ pub fn run() {
             }
 
             let quit_i = tauri::menu::MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let show_i = tauri::menu::MenuItem::with_id(app, "show", "Show Main App", true, None::<&str>)?;
+            let show_i =
+                tauri::menu::MenuItem::with_id(app, "show", "Show Main App", true, None::<&str>)?;
             let menu = tauri::menu::Menu::with_items(app, &[&show_i, &quit_i])?;
 
             let _tray = TrayIconBuilder::new()
@@ -273,7 +298,11 @@ pub fn run() {
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| match event {
-                    TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } => {
+                    TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } => {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
@@ -292,8 +321,15 @@ pub fn run() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![fetch_contests, get_cached_contests, open_main_app, get_api_config, save_api_config, get_available_platforms, check_for_updates])
+        .invoke_handler(tauri::generate_handler![
+            fetch_contests,
+            get_cached_contests,
+            open_main_app,
+            get_api_config,
+            save_api_config,
+            get_available_platforms,
+            check_for_updates
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

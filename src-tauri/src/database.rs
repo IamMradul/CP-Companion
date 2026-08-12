@@ -81,7 +81,7 @@ pub fn get_upcoming_contests(conn: &Connection) -> Result<Vec<Contest>> {
         "SELECT id, name, platform, start_time, duration_seconds, url 
          FROM contests 
          WHERE datetime(start_time) >= datetime('now', '-2 hours') 
-         ORDER BY datetime(start_time) ASC"
+         ORDER BY datetime(start_time) ASC",
     )?;
 
     let contest_iter = stmt.query_map([], |row| {
@@ -104,7 +104,8 @@ pub fn get_upcoming_contests(conn: &Connection) -> Result<Vec<Contest>> {
 }
 
 pub fn get_config(conn: &Connection) -> Result<Option<AppConfig>> {
-    let mut stmt = conn.prepare("SELECT username, api_key, platforms FROM app_config WHERE id = 1")?;
+    let mut stmt =
+        conn.prepare("SELECT username, api_key, platforms FROM app_config WHERE id = 1")?;
     let mut rows = stmt.query([])?;
 
     if let Some(row) = rows.next()? {
@@ -112,14 +113,21 @@ pub fn get_config(conn: &Connection) -> Result<Option<AppConfig>> {
         Ok(Some(AppConfig {
             username: row.get(0)?,
             api_key: row.get(1)?,
-            platforms: platforms.unwrap_or_else(|_| "codeforces.com,leetcode.com,atcoder.jp,codechef.com".to_string()),
+            platforms: platforms.unwrap_or_else(|_| {
+                "codeforces.com,leetcode.com,atcoder.jp,codechef.com".to_string()
+            }),
         }))
     } else {
         Ok(None)
     }
 }
 
-pub fn save_config(conn: &Connection, username: &str, api_key: &str, platforms: &str) -> Result<()> {
+pub fn save_config(
+    conn: &Connection,
+    username: &str,
+    api_key: &str,
+    platforms: &str,
+) -> Result<()> {
     conn.execute(
         "INSERT OR REPLACE INTO app_config (id, username, api_key, platforms) VALUES (1, ?1, ?2, ?3)",
         [username, api_key, platforms],
