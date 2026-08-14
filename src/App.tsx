@@ -30,6 +30,7 @@ function App() {
   const [apiKey, setApiKey] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [dismissConfigModal, setDismissConfigModal] = useState(false);
+  const [showClistHint, setShowClistHint] = useState(false);
   const [availablePlatforms, setAvailablePlatforms] = useState<{ id: string, name: string }[]>(SUPPORTED_PLATFORMS);
   const [platformSearchQuery, setPlatformSearchQuery] = useState("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(
@@ -45,7 +46,18 @@ function App() {
 
         if (appWindow.label === "main") {
           try {
-            const autoStartStatus = await isEnabled();
+            let autoStartStatus = await isEnabled();
+            
+            // Check if this is the first time running the app
+            const hasRunBefore = localStorage.getItem("cp_companion_has_run");
+            if (!hasRunBefore) {
+              if (!autoStartStatus) {
+                await enable();
+                autoStartStatus = true;
+              }
+              localStorage.setItem("cp_companion_has_run", "true");
+            }
+            
             setAutostartEnabled(autoStartStatus);
             const config: any = await invoke("get_api_config");
             if (config) {
@@ -277,9 +289,22 @@ function App() {
                   <p className="text-sm text-white/70">Please configure your Clist API credentials to fetch upcoming contests.</p>
                 </div>
 
-                <div>
+                <div className="relative">
                   <label className="text-xs text-white/60 block mb-1">Clist Username</label>
-                  <input type="text" value={username} onChange={e => setUsername(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded p-2 text-sm text-white focus:border-blue-500 outline-none transition-colors" placeholder="e.g. tournist" />
+                  <input 
+                    type="text" 
+                    value={username} 
+                    onChange={e => setUsername(e.target.value)} 
+                    onFocus={() => setShowClistHint(true)}
+                    onBlur={() => setShowClistHint(false)}
+                    className="w-full bg-black/20 border border-white/10 rounded p-2 text-sm text-white focus:border-blue-500 outline-none transition-colors" 
+                    placeholder="e.g. tournist" 
+                  />
+                  {showClistHint && (
+                    <div className="absolute z-10 bottom-full left-0 mb-1 w-full bg-blue-500/20 border border-blue-500/30 text-blue-200 text-xs p-2 rounded shadow-lg backdrop-blur-sm pointer-events-none">
+                      ⚠️ Use your <strong>clist.by</strong> username and API key (not your Codeforces/LeetCode password).
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs text-white/60 block mb-1">Clist API Key</label>
@@ -291,12 +316,20 @@ function App() {
                 </button>
 
                 <div className="mt-2 pt-4 border-t border-white/10">
-                  <h3 className="text-xs font-semibold text-white/80 mb-2">How to get your API Key:</h3>
-                  <ol className="text-xs text-white/60 space-y-1.5 list-decimal list-inside">
-                    <li>Create an account at <a href="https://clist.by" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">clist.by</a></li>
-                    <li>Log in and go to the <a href="https://clist.by/api/v4/doc/" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">API Documentation page</a></li>
-                    <li>Copy your username and click "Authorization" to get your API Key.</li>
-                    <li>Need help? Watch the <a href="https://www.youtube.com/watch?v=ilP9Ci6ICvM" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">tutorial video</a>.</li>
+                  <h3 className="text-xs font-semibold text-white/80 mb-3">How to get your API Key:</h3>
+                  <ol className="text-xs text-white/60 space-y-2 list-decimal list-inside bg-black/20 p-3 rounded border border-white/5">
+                    <li>
+                      <span className="font-semibold text-white/80">Register:</span> Create a free account at <a href="https://clist.by" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">clist.by</a>.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-white/80">Find Username:</span> Click your profile in the top-right corner to copy your <span className="text-white/80">Username</span>.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-white/80">Get API Key:</span> Visit the <a href="https://clist.by/api/v4/doc/" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">API Documentation</a>, click the "Authorization" button, and copy your <span className="text-white/80">API Key</span>.
+                    </li>
+                    <li className="pt-2 mt-2 border-t border-white/5 list-none -ml-4 pl-4">
+                      <span className="font-semibold text-white/80">Need help?</span> Watch the <a href="https://www.youtube.com/watch?v=ilP9Ci6ICvM" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">tutorial video</a>.
+                    </li>
                   </ol>
                 </div>
               </div>
@@ -332,19 +365,42 @@ function App() {
 
               <div className="bg-white/5 border border-white/10 rounded-xl p-4">
                 <h3 className="text-xs font-semibold text-white/70 uppercase tracking-widest mb-4">API Configuration</h3>
-                <label className="text-xs text-white/60 block mb-1">Clist Username</label>
-                <input type="text" value={username} onChange={e => setUsername(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded p-2 text-sm text-white focus:border-blue-500 outline-none transition-colors" placeholder="e.g. tournist" />
+                <div className="relative">
+                  <label className="text-xs text-white/60 block mb-1">Clist Username</label>
+                  <input 
+                    type="text" 
+                    value={username} 
+                    onChange={e => setUsername(e.target.value)} 
+                    onFocus={() => setShowClistHint(true)}
+                    onBlur={() => setShowClistHint(false)}
+                    className="w-full bg-black/20 border border-white/10 rounded p-2 text-sm text-white focus:border-blue-500 outline-none transition-colors" 
+                    placeholder="e.g. tournist" 
+                  />
+                  {showClistHint && (
+                    <div className="absolute z-10 bottom-full left-0 mb-1 w-full bg-blue-500/20 border border-blue-500/30 text-blue-200 text-xs p-2 rounded shadow-lg backdrop-blur-sm pointer-events-none">
+                      ⚠️ Use your <strong>clist.by</strong> username and API key (not your Codeforces/LeetCode password).
+                    </div>
+                  )}
+                </div>
 
                 <label className="text-xs text-white/60 block mt-4 mb-1">Clist API Key</label>
                 <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded p-2 text-sm text-white focus:border-blue-500 outline-none transition-colors" placeholder="Enter API Key" />
 
                 <div className="mt-4 pt-4 border-t border-white/10">
-                  <h3 className="text-xs font-semibold text-white/80 mb-2">How to get your API Key:</h3>
-                  <ol className="text-xs text-white/60 space-y-1.5 list-decimal list-inside">
-                    <li>Create an account at <a href="https://clist.by" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">clist.by</a></li>
-                    <li>Log in and go to the <a href="https://clist.by/api/v4/doc/" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">API Documentation page</a></li>
-                    <li>Copy your username and click "Authorization" to get your API Key.</li>
-                    <li>Need help? Watch the <a href="https://www.youtube.com/watch?v=ilP9Ci6ICvM" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">tutorial video</a>.</li>
+                  <h3 className="text-xs font-semibold text-white/80 mb-3">How to get your API Key:</h3>
+                  <ol className="text-xs text-white/60 space-y-2 list-decimal list-inside bg-black/20 p-3 rounded border border-white/5">
+                    <li>
+                      <span className="font-semibold text-white/80">Register:</span> Create a free account at <a href="https://clist.by" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">clist.by</a>.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-white/80">Find Username:</span> Click your profile in the top-right corner to copy your <span className="text-white/80">Username</span>.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-white/80">Get API Key:</span> Visit the <a href="https://clist.by/api/v4/doc/" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">API Documentation</a>, click the "Authorization" button, and copy your <span className="text-white/80">API Key</span>.
+                    </li>
+                    <li className="pt-2 mt-2 border-t border-white/5 list-none -ml-4 pl-4">
+                      <span className="font-semibold text-white/80">Need help?</span> Watch the <a href="https://www.youtube.com/watch?v=ilP9Ci6ICvM" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">tutorial video</a>.
+                    </li>
                   </ol>
                 </div>
                 <div className="flex gap-2 mt-6">

@@ -172,7 +172,7 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
         .map_err(|e| format!("Failed to parse update response: {}", e))?;
 
     let tag_name = resp["tag_name"].as_str().unwrap_or("").to_string();
-    let html_url = resp["html_url"]
+    let _html_url = resp["html_url"]
         .as_str()
         .unwrap_or("https://github.com/IamMradul/CP-Companion/releases")
         .to_string();
@@ -190,7 +190,7 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
     Ok(UpdateInfo {
         available,
         latest_version: tag_name.strip_prefix('v').unwrap_or(&tag_name).to_string(),
-        download_url: html_url,
+        download_url: "https://cpcompanion.vercel.app/".to_string(),
     })
 }
 

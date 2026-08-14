@@ -78,9 +78,32 @@ The architecture is designed to minimize external API calls (preventing rate lim
    ```
    *This generates the optimized release binary and installer for your OS.*
 
-## ⚙️ Configuration
+## ⚙️ API Configuration
 
-Upon first launch, the app will prompt you to enter your Clist API credentials.
-1. Create an account on [clist.by](https://clist.by/).
-2. Go to your profile settings to retrieve your API Key.
-3. Open the Settings tab in CP Companion, enter your Username and API Key, and save. The app will automatically fetch upcoming contests.
+To pull live contest data, CP Companion requires a free API key from Clist.by. Follow these steps to configure your application:
+
+### Step 1: Create a Clist.by Account
+> [!IMPORTANT]
+> You must have a registered account on Clist.by to generate an API key.
+
+1. Navigate to [clist.by](https://clist.by/) in your web browser.
+2. Click on **Register** and create a free account.
+
+### Step 2: Retrieve your API Credentials
+> [!TIP]
+> Your API key is like a password. Keep it secure and do not share it with others!
+
+1. Log into your newly created Clist account.
+2. Click on your profile username in the top right corner of the website.
+3. Navigate to the **API** tab (or visit [clist.by/api/v4/doc/](https://clist.by/api/v4/doc/) directly).
+4. Locate and copy both your **Username** and your **API Key**.
+
+### Step 3: Configure CP Companion
+1. Launch the **CP Companion** desktop application.
+2. Click on the **Settings** (gear icon) located in the main navigation bar.
+3. Scroll down to the **Clist API Settings** section.
+4. Paste your copied **Username** and **API Key** into the respective input fields.
+5. *(Optional)* Select your preferred competitive programming platforms (e.g., Codeforces, LeetCode, AtCoder) from the list below.
+6. Click the **Save** button.
+
+🎉 **You're all set!** The application will immediately authenticate and fetch the upcoming contests for your selected platforms.
