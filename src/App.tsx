@@ -11,31 +11,15 @@ import { enable, isEnabled, disable } from '@tauri-apps/plugin-autostart';
 import { UpdateNotification } from "./components/UpdateNotification";
 import "./App.css";
 
-const SUPPORTED_PLATFORMS = [
-  { id: "codeforces.com", name: "Codeforces" },
-  { id: "leetcode.com", name: "LeetCode" },
-  { id: "atcoder.jp", name: "AtCoder" },
-  { id: "codechef.com", name: "CodeChef" },
-  { id: "geeksforgeeks.org", name: "GeeksforGeeks" },
-  { id: "hackerrank.com", name: "HackerRank" }
-];
-
 function App() {
   const [view, setView] = useState<"widget" | "calendar" | "settings">("widget");
   const [windowLabel, setWindowLabel] = useState<string | null>(null);
   const [autostartEnabled, setAutostartEnabled] = useState(false);
-  const { fetchContests, isLoading, needsConfig } = useContestStore();
+  const { fetchContests, isLoading } = useContestStore();
 
-  const [username, setUsername] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [dismissConfigModal, setDismissConfigModal] = useState(false);
-  const [showClistHint, setShowClistHint] = useState(false);
-  const [availablePlatforms, setAvailablePlatforms] = useState<{ id: string, name: string }[]>(SUPPORTED_PLATFORMS);
+  const [availablePlatforms, setAvailablePlatforms] = useState<{ id: string, name: string }[]>([]);
   const [platformSearchQuery, setPlatformSearchQuery] = useState("");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(
-    SUPPORTED_PLATFORMS.map(p => p.id)
-  );
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
 
   useEffect(() => {
     // Determine which window we are rendering
@@ -61,36 +45,38 @@ function App() {
             setAutostartEnabled(autoStartStatus);
             const config: any = await invoke("get_api_config");
             if (config) {
-              setUsername(config.username || "");
-              const currentApiKey = config.apiKey || config.api_key || "";
-              setApiKey(currentApiKey);
-
               if (config.platforms && Array.isArray(config.platforms)) {
                 setSelectedPlatforms(config.platforms);
               }
-              if (config.username && currentApiKey) {
-                try {
-                  const platforms: any[] = await invoke("get_available_platforms");
-                  if (platforms && platforms.length > 0) {
-                    const formatted = platforms.map(p => {
-                      const supported = SUPPORTED_PLATFORMS.find(s => s.id === p.name);
-                      return {
-                        id: p.name,
-                        name: supported ? supported.name : p.name
-                      };
-                    });
-                    formatted.sort((a, b) => {
-                      const aSel = config.platforms?.includes(a.id);
-                      const bSel = config.platforms?.includes(b.id);
-                      if (aSel && !bSel) return -1;
-                      if (!aSel && bSel) return 1;
-                      return a.name.localeCompare(b.name);
-                    });
-                    setAvailablePlatforms(formatted);
-                  }
-                } catch (e) {
-                  console.error("Failed to fetch dynamic platforms:", e);
+              try {
+                const platforms: any[] = await invoke("get_available_platforms");
+                if (platforms && platforms.length > 0) {
+                  const formatted = platforms.map(p => {
+                    let niceName = p.name;
+                    if (niceName.includes('.')) {
+                        let parts = niceName.split('.');
+                        niceName = parts[0];
+                        // Special cases for nicer formatting
+                        if (niceName === "geeksforgeeks") niceName = "GeeksforGeeks";
+                        else if (niceName === "hackerrank") niceName = "HackerRank";
+                        else niceName = niceName.charAt(0).toUpperCase() + niceName.slice(1);
+                    }
+                    return {
+                      id: p.name,
+                      name: niceName
+                    };
+                  });
+                  formatted.sort((a, b) => {
+                    const aSel = config.platforms?.includes(a.id);
+                    const bSel = config.platforms?.includes(b.id);
+                    if (aSel && !bSel) return -1;
+                    if (!aSel && bSel) return 1;
+                    return a.name.localeCompare(b.name);
+                  });
+                  setAvailablePlatforms(formatted);
                 }
+              } catch (e) {
+                console.error("Failed to fetch dynamic platforms:", e);
               }
             }
           } catch (err) {
@@ -130,29 +116,7 @@ function App() {
     }
   };
 
-  const handleSaveConfig = async () => {
-    setSaveSuccess(false);
-    try {
-      await invoke("save_api_config", { username, apiKey, platforms: selectedPlatforms });
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-      fetchContests(); // Refetch with new credentials
-    } catch (e) {
-      console.error("Failed to save config:", e);
-    }
-  };
 
-  const handleClearConfig = async () => {
-    try {
-      await invoke("save_api_config", { username: "", apiKey: "", platforms: SUPPORTED_PLATFORMS.map(p => p.id) });
-      setUsername("");
-      setApiKey("");
-      setSelectedPlatforms(SUPPORTED_PLATFORMS.map(p => p.id));
-      fetchContests(); // Refetch to reset state
-    } catch (e) {
-      console.error("Failed to clear config:", e);
-    }
-  };
 
   const togglePlatform = async (platformId: string) => {
     const newPlatforms = selectedPlatforms.includes(platformId)
@@ -161,14 +125,12 @@ function App() {
 
     setSelectedPlatforms(newPlatforms);
 
-    // Auto-save if they have API credentials configured
-    if (username && apiKey) {
-      try {
-        await invoke("save_api_config", { username, apiKey, platforms: newPlatforms });
-        fetchContests();
-      } catch (e) {
-        console.error("Failed to save platforms:", e);
-      }
+    // Auto-save platforms
+    try {
+      await invoke("save_api_config", { platforms: newPlatforms });
+      fetchContests();
+    } catch (e) {
+      console.error("Failed to save platforms:", e);
     }
   };
 
@@ -180,16 +142,6 @@ function App() {
     const bSel = selectedPlatforms.includes(b.id);
     if (aSel && !bSel) return -1;
     if (!aSel && bSel) return 1;
-
-    const aPop = SUPPORTED_PLATFORMS.findIndex(p => p.id === a.id);
-    const bPop = SUPPORTED_PLATFORMS.findIndex(p => p.id === b.id);
-    const aIsPop = aPop !== -1;
-    const bIsPop = bPop !== -1;
-
-    if (aIsPop && !bIsPop) return -1;
-    if (!aIsPop && bIsPop) return 1;
-    if (aIsPop && bIsPop) return aPop - bPop;
-
     return a.name.localeCompare(b.name);
   });
 
@@ -197,13 +149,11 @@ function App() {
     const allIds = filteredPlatforms.map(p => p.id);
     const newPlatforms = Array.from(new Set([...selectedPlatforms, ...allIds]));
     setSelectedPlatforms(newPlatforms);
-    if (username && apiKey) {
-      try {
-        await invoke("save_api_config", { username, apiKey, platforms: newPlatforms });
-        fetchContests();
-      } catch (e) {
-        console.error("Failed to save platforms:", e);
-      }
+    try {
+      await invoke("save_api_config", { platforms: newPlatforms });
+      fetchContests();
+    } catch (e) {
+      console.error("Failed to save platforms:", e);
     }
   };
 
@@ -211,13 +161,11 @@ function App() {
     const filteredIds = new Set(filteredPlatforms.map(p => p.id));
     const newPlatforms = selectedPlatforms.filter(id => !filteredIds.has(id));
     setSelectedPlatforms(newPlatforms);
-    if (username && apiKey) {
-      try {
-        await invoke("save_api_config", { username, apiKey, platforms: newPlatforms });
-        fetchContests();
-      } catch (e) {
-        console.error("Failed to save platforms:", e);
-      }
+    try {
+      await invoke("save_api_config", { platforms: newPlatforms });
+      fetchContests();
+    } catch (e) {
+      console.error("Failed to save platforms:", e);
     }
   };
 
@@ -274,67 +222,7 @@ function App() {
 
         {/* Content Area */}
         <main className="flex-1 overflow-y-auto custom-scrollbar flex flex-col relative">
-          {needsConfig && !dismissConfigModal && (
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-[#1a1a1a] border border-white/10 rounded-xl p-5 w-full max-w-sm shadow-2xl flex flex-col gap-3 relative">
-                <button
-                  onClick={() => setDismissConfigModal(true)}
-                  className="absolute top-3 right-3 p-1 text-white/40 hover:text-white/90 hover:bg-white/10 rounded-md transition-colors"
-                  title="Close"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-                <div>
-                  <h2 className="text-lg font-bold text-white mb-1">Welcome to CP Companion</h2>
-                  <p className="text-sm text-white/70">Please configure your Clist API credentials to fetch upcoming contests.</p>
-                </div>
 
-                <div className="relative">
-                  <label className="text-xs text-white/60 block mb-1">Clist Username</label>
-                  <input 
-                    type="text" 
-                    value={username} 
-                    onChange={e => setUsername(e.target.value)} 
-                    onFocus={() => setShowClistHint(true)}
-                    onBlur={() => setShowClistHint(false)}
-                    className="w-full bg-black/20 border border-white/10 rounded p-2 text-sm text-white focus:border-blue-500 outline-none transition-colors" 
-                    placeholder="e.g. tournist" 
-                  />
-                  {showClistHint && (
-                    <div className="absolute z-10 bottom-full left-0 mb-1 w-full bg-blue-500/20 border border-blue-500/30 text-blue-200 text-xs p-2 rounded shadow-lg backdrop-blur-sm pointer-events-none">
-                      ⚠️ Use your <strong>clist.by</strong> username and API key (not your Codeforces/LeetCode password).
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="text-xs text-white/60 block mb-1">Clist API Key</label>
-                  <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded p-2 text-sm text-white focus:border-blue-500 outline-none transition-colors" placeholder="Enter API Key" />
-                </div>
-
-                <button onClick={handleSaveConfig} className={`w-full text-sm py-2 rounded transition-colors ${saveSuccess ? 'bg-green-500/20 text-green-400' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
-                  {saveSuccess ? "Saved successfully!" : "Save Configuration"}
-                </button>
-
-                <div className="mt-2 pt-4 border-t border-white/10">
-                  <h3 className="text-xs font-semibold text-white/80 mb-3">How to get your API Key:</h3>
-                  <ol className="text-xs text-white/60 space-y-2 list-decimal list-inside bg-black/20 p-3 rounded border border-white/5">
-                    <li>
-                      <span className="font-semibold text-white/80">Register:</span> Create a free account at <a href="https://clist.by" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">clist.by</a>.
-                    </li>
-                    <li>
-                      <span className="font-semibold text-white/80">Find Username:</span> Click your profile in the top-right corner to copy your <span className="text-white/80">Username</span>.
-                    </li>
-                    <li>
-                      <span className="font-semibold text-white/80">Get API Key:</span> Visit the <a href="https://clist.by/api/v4/doc/" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">API Documentation</a>, click the "Authorization" button, and copy your <span className="text-white/80">API Key</span>.
-                    </li>
-                    <li className="pt-2 mt-2 border-t border-white/5 list-none -ml-4 pl-4">
-                      <span className="font-semibold text-white/80">Need help?</span> Watch the <a href="https://www.youtube.com/watch?v=ilP9Ci6ICvM" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">tutorial video</a>.
-                    </li>
-                  </ol>
-                </div>
-              </div>
-            </div>
-          )}
           {view === "widget" && <div className="p-3"><WidgetView /></div>}
           {view === "calendar" && <CalendarView />}
           {view === "settings" && (
@@ -363,55 +251,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <h3 className="text-xs font-semibold text-white/70 uppercase tracking-widest mb-4">API Configuration</h3>
-                <div className="relative">
-                  <label className="text-xs text-white/60 block mb-1">Clist Username</label>
-                  <input 
-                    type="text" 
-                    value={username} 
-                    onChange={e => setUsername(e.target.value)} 
-                    onFocus={() => setShowClistHint(true)}
-                    onBlur={() => setShowClistHint(false)}
-                    className="w-full bg-black/20 border border-white/10 rounded p-2 text-sm text-white focus:border-blue-500 outline-none transition-colors" 
-                    placeholder="e.g. tournist" 
-                  />
-                  {showClistHint && (
-                    <div className="absolute z-10 bottom-full left-0 mb-1 w-full bg-blue-500/20 border border-blue-500/30 text-blue-200 text-xs p-2 rounded shadow-lg backdrop-blur-sm pointer-events-none">
-                      ⚠️ Use your <strong>clist.by</strong> username and API key (not your Codeforces/LeetCode password).
-                    </div>
-                  )}
-                </div>
 
-                <label className="text-xs text-white/60 block mt-4 mb-1">Clist API Key</label>
-                <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded p-2 text-sm text-white focus:border-blue-500 outline-none transition-colors" placeholder="Enter API Key" />
-
-                <div className="mt-4 pt-4 border-t border-white/10">
-                  <h3 className="text-xs font-semibold text-white/80 mb-3">How to get your API Key:</h3>
-                  <ol className="text-xs text-white/60 space-y-2 list-decimal list-inside bg-black/20 p-3 rounded border border-white/5">
-                    <li>
-                      <span className="font-semibold text-white/80">Register:</span> Create a free account at <a href="https://clist.by" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">clist.by</a>.
-                    </li>
-                    <li>
-                      <span className="font-semibold text-white/80">Find Username:</span> Click your profile in the top-right corner to copy your <span className="text-white/80">Username</span>.
-                    </li>
-                    <li>
-                      <span className="font-semibold text-white/80">Get API Key:</span> Visit the <a href="https://clist.by/api/v4/doc/" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">API Documentation</a>, click the "Authorization" button, and copy your <span className="text-white/80">API Key</span>.
-                    </li>
-                    <li className="pt-2 mt-2 border-t border-white/5 list-none -ml-4 pl-4">
-                      <span className="font-semibold text-white/80">Need help?</span> Watch the <a href="https://www.youtube.com/watch?v=ilP9Ci6ICvM" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline">tutorial video</a>.
-                    </li>
-                  </ol>
-                </div>
-                <div className="flex gap-2 mt-6">
-                  <button onClick={handleSaveConfig} className={`flex-1 text-sm py-2 rounded transition-colors ${saveSuccess ? 'bg-green-500/20 text-green-400' : 'bg-white/10 hover:bg-white/20 text-white'}`}>
-                    {saveSuccess ? "Saved successfully!" : "Save Configuration"}
-                  </button>
-                  <button onClick={handleClearConfig} className="text-sm py-2 px-4 rounded transition-colors bg-red-500/10 hover:bg-red-500/20 text-red-400" title="Remove Configuration">
-                    Remove
-                  </button>
-                </div>
-              </div>
 
               <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col min-h-[300px]">
                 <div className="flex items-center justify-between mb-4">

@@ -4,7 +4,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useContestStore } from "../stores/useContestStore";
 import { formatTimeRemaining } from "../utils/time";
-import { GripVertical, X, ExternalLink, Maximize2 } from "lucide-react";
+import { GripVertical, X, ExternalLink, Maximize2, CalendarDays } from "lucide-react";
+import { addToGooglesCalendar } from "../utils/calendar";
 
 export function RainmeterWidget() {
   const { contests, isLoading } = useContestStore();
@@ -42,16 +43,18 @@ export function RainmeterWidget() {
 
   const now = new Date().getTime();
   const within24h = contests.filter((c) => {
-    const target = new Date(c.startTime).getTime();
-    const diff = target - now;
-    return diff > 0 && diff <= 24 * 60 * 60 * 1000;
+    const start = new Date(c.startTime).getTime();
+    const end = start + c.durationSeconds * 1000;
+    const isOngoing = now >= start && now < end;
+    const diff = start - now;
+    return isOngoing || (diff > 0 && diff <= 24 * 60 * 60 * 1000);
   });
 
   // If no contests within 24h, show the next 2 upcoming contests instead
   const isFallback = within24h.length === 0;
   const upcoming = isFallback
     ? contests
-        .filter((c) => new Date(c.startTime).getTime() - now > 0)
+        .filter((c) => new Date(c.startTime).getTime() + c.durationSeconds * 1000 > now)
         .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
         .slice(0, 2)
     : within24h;
@@ -115,32 +118,48 @@ export function RainmeterWidget() {
           </div>
         )}
         {upcoming.length > 0 ? (
-          upcoming.map((contest) => (
+          upcoming.map((contest) => {
+            const start = new Date(contest.startTime).getTime();
+            const isOngoingContest = now >= start && now < (start + contest.durationSeconds * 1000);
+            
+            return (
             <div
               key={contest.id}
               onClick={(e) => {
                 e.stopPropagation();
                 openUrl(contest.url);
               }}
-              className={`flex flex-col group/item hover:bg-white/[0.04] p-2.5 rounded-lg cursor-pointer transition-colors border border-transparent ${isFallback ? 'opacity-70' : ''}`}
+              className={`flex flex-col group/item hover:bg-white/[0.04] p-2.5 rounded-lg cursor-pointer transition-colors border ${isOngoingContest ? 'border-red-500/20 bg-red-500/[0.02]' : 'border-transparent'} ${isFallback ? 'opacity-70' : ''}`}
               title={contest.url}
             >
               <div className="flex items-center justify-between pointer-events-none mb-1.5">
                 <span className="text-[10px] font-medium tracking-wider text-white/40 uppercase flex items-center gap-1">
                   {contest.platform}
                 </span>
-                <span className="text-[10.5px] font-mono font-medium text-white/70 bg-white/10 px-1.5 py-0.5 rounded-md">
-                  {formatTimeRemaining(contest.startTime)}
+                <span className={`text-[10.5px] font-mono font-medium px-1.5 py-0.5 rounded-md flex items-center gap-1.5 ${isOngoingContest ? 'text-red-400 bg-red-500/10' : 'text-white/70 bg-white/10'}`}>
+                  {isOngoingContest && <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite] shadow-[0_0_8px_rgba(239,68,68,0.8)]" />}
+                  {isOngoingContest ? 'ONGOING' : formatTimeRemaining(contest.startTime)}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-[12.5px] font-medium text-white/80 truncate pointer-events-none group-hover/item:text-white leading-tight">
                   {contest.name}
                 </h3>
-                <ExternalLink className="w-3 h-3 text-white/30 group-hover/item:text-white/70 shrink-0 transition-opacity opacity-0 group-hover/item:opacity-100" />
+                <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); addToGooglesCalendar(contest); }}
+                    className="p-1 hover:bg-white/10 rounded text-white/40 hover:text-white/90 transition-colors"
+                    title="Add to Google Calendar"
+                  >
+                    <CalendarDays className="w-3 h-3" />
+                  </button>
+                  <div className="p-1 text-white/30 group-hover/item:text-white/70">
+                    <ExternalLink className="w-3 h-3 pointer-events-none" />
+                  </div>
+                </div>
               </div>
             </div>
-          ))
+          )})
         ) : (
           <div className="text-xs text-white/40 text-center pointer-events-none flex-1 flex items-center justify-center min-h-[44px]">
             No upcoming contests

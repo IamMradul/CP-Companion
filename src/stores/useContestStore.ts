@@ -31,10 +31,6 @@ export const useContestStore = create<ContestState>((set) => ({
       set({ contests: data, isLoading: false });
     } catch (err: any) {
       console.error("Failed to fetch contests:", err);
-      if (err.toString().includes("API_KEY_MISSING")) {
-        set({ needsConfig: true, isLoading: false });
-        return;
-      }
       // Fallback: try fetching cached contests if fetch_contests fails fully
       try {
         const cached = await invoke<Contest[]>("get_cached_contests");

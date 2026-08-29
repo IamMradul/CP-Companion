@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, CalendarDays } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Contest } from "../stores/useContestStore";
 import { formatTimeRemaining, formatDuration } from "../utils/time";
+import { addToGooglesCalendar } from "../utils/calendar";
 
 interface ContestCardProps {
   contest: Contest;
@@ -71,7 +72,16 @@ export function ContestCard({ contest }: ContestCardProps) {
         <span className="text-xs truncate pr-2" title={contest.url}>
           {contest.url}
         </span>
-        <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
+        <div className="flex items-center gap-3 shrink-0">
+          <button 
+            onClick={(e) => { e.stopPropagation(); addToGooglesCalendar(contest); }}
+            className="flex items-center justify-center p-1.5 bg-white/5 hover:bg-white/20 border border-white/10 rounded-md text-white/60 hover:text-white transition-colors"
+            title="Add to Google Calendar"
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+          </button>
+          <ExternalLink className="w-3.5 h-3.5" />
+        </div>
       </div>
     </div>
   );

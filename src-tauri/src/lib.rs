@@ -15,21 +15,16 @@ struct AppState {
 
 #[tauri::command]
 async fn fetch_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, String> {
-    let (api_key, username, platforms) = {
+    let (server_url, platforms) = {
         let conn = state.db.lock().unwrap();
         match get_config(&conn) {
-            Ok(Some(config)) => {
-                if config.api_key.trim().is_empty() || config.username.trim().is_empty() {
-                    return Err("API_KEY_MISSING".to_string());
-                }
-                (config.api_key, config.username, config.platforms)
-            }
-            _ => return Err("API_KEY_MISSING".to_string()),
+            Ok(Some(config)) => (config.server_url, config.platforms),
+            _ => ("https://don-airlines-registered-announcement.trycloudflare.com/api".to_string(), "codeforces.com,leetcode.com,atcoder.jp,codechef.com".to_string()),
         }
     };
 
-    // 1. Fetch from Clist API
-    match clist::fetch_contests(&api_key, &username, &platforms).await {
+    // 1. Fetch from Backend API
+    match clist::fetch_contests(&server_url, &platforms).await {
         Ok(contests) => {
             // 2. Save to SQLite Cache
             let conn = state.db.lock().unwrap();
@@ -42,7 +37,7 @@ async fn fetch_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, Stri
         }
         Err(e) => {
             eprintln!(
-                "Failed to fetch from Clist API: {}. Falling back to cache.",
+                "Failed to fetch from Backend API: {}. Falling back to cache.",
                 e
             );
             // Fallback to cache
@@ -61,8 +56,6 @@ fn get_cached_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, Strin
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ApiConfigResponse {
-    username: String,
-    api_key: String,
     platforms: Vec<String>,
 }
 
@@ -71,8 +64,6 @@ fn get_api_config(state: State<'_, AppState>) -> Result<Option<ApiConfigResponse
     let conn = state.db.lock().unwrap();
     match get_config(&conn) {
         Ok(Some(config)) => Ok(Some(ApiConfigResponse {
-            username: config.username,
-            api_key: config.api_key,
             platforms: config
                 .platforms
                 .split(',')
@@ -88,33 +79,30 @@ fn get_api_config(state: State<'_, AppState>) -> Result<Option<ApiConfigResponse
 #[tauri::command]
 fn save_api_config(
     state: State<'_, AppState>,
-    username: String,
-    api_key: String,
     platforms: Vec<String>,
 ) -> Result<(), String> {
     let conn = state.db.lock().unwrap();
     let platforms_str = platforms.join(",");
-    save_config(&conn, &username, &api_key, &platforms_str).map_err(|e| e.to_string())
+    let server_url = match get_config(&conn) {
+        Ok(Some(config)) => config.server_url,
+        _ => "https://don-airlines-registered-announcement.trycloudflare.com/api".to_string(),
+    };
+    save_config(&conn, &server_url, &platforms_str).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn get_available_platforms(
     state: State<'_, AppState>,
 ) -> Result<Vec<clist::ClistPlatform>, String> {
-    let (api_key, username) = {
+    let server_url = {
         let conn = state.db.lock().unwrap();
         match get_config(&conn) {
-            Ok(Some(config)) => {
-                if config.api_key.trim().is_empty() || config.username.trim().is_empty() {
-                    return Err("API_KEY_MISSING".to_string());
-                }
-                (config.api_key, config.username)
-            }
-            _ => return Err("API_KEY_MISSING".to_string()),
+            Ok(Some(config)) => config.server_url,
+            _ => "https://don-airlines-registered-announcement.trycloudflare.com/api".to_string(),
         }
     };
 
-    clist::fetch_available_platforms(&api_key, &username)
+    clist::fetch_available_platforms(&server_url)
         .await
         .map_err(|e| e.to_string())
 }
@@ -243,23 +231,25 @@ pub fn run() {
                 };
 
                 if let Some(widget_window) = app.get_webview_window("widget") {
-                    let hwnd = widget_window.hwnd().unwrap().0 as isize;
-                    unsafe {
-                        let style = GetWindowLongPtrW(hwnd as _, GWL_STYLE);
-                        let new_style =
-                            style & !(WS_MINIMIZEBOX as isize) & !(WS_MAXIMIZEBOX as isize);
-                        SetWindowLongPtrW(hwnd as _, GWL_STYLE, new_style);
+                    if let Ok(hwnd_obj) = widget_window.hwnd() {
+                        let hwnd = hwnd_obj.0 as isize;
+                        unsafe {
+                            let style = GetWindowLongPtrW(hwnd as _, GWL_STYLE);
+                            let new_style =
+                                style & !(WS_MINIMIZEBOX as isize) & !(WS_MAXIMIZEBOX as isize);
+                            SetWindowLongPtrW(hwnd as _, GWL_STYLE, new_style);
 
-                        let ex_style = GetWindowLongPtrW(hwnd as _, GWL_EXSTYLE);
-                        let new_ex_style =
-                            (ex_style & !(WS_EX_APPWINDOW as isize)) | (WS_EX_TOOLWINDOW as isize);
-                        SetWindowLongPtrW(hwnd as _, GWL_EXSTYLE, new_ex_style);
+                            let ex_style = GetWindowLongPtrW(hwnd as _, GWL_EXSTYLE);
+                            let new_ex_style =
+                                (ex_style & !(WS_EX_APPWINDOW as isize)) | (WS_EX_TOOLWINDOW as isize);
+                            SetWindowLongPtrW(hwnd as _, GWL_EXSTYLE, new_ex_style);
 
-                        let progman_name: Vec<u16> =
-                            "Progman".encode_utf16().chain(std::iter::once(0)).collect();
-                        let progman = FindWindowW(progman_name.as_ptr(), std::ptr::null());
-                        if !progman.is_null() {
-                            SetWindowLongPtrW(hwnd as _, GWLP_HWNDPARENT, progman as isize);
+                            let progman_name: Vec<u16> =
+                                "Progman".encode_utf16().chain(std::iter::once(0)).collect();
+                            let progman = FindWindowW(progman_name.as_ptr(), std::ptr::null());
+                            if !progman.is_null() {
+                                SetWindowLongPtrW(hwnd as _, GWLP_HWNDPARENT, progman as isize);
+                            }
                         }
                     }
                 }

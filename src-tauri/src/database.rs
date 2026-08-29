@@ -15,8 +15,7 @@ pub struct Contest {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
-    pub username: String,
-    pub api_key: String,
+    pub server_url: String,
     pub platforms: String,
 }
 
@@ -39,16 +38,16 @@ pub fn init_db(db_path: &std::path::Path) -> Result<Connection> {
     )?;
 
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS app_config (
+        "CREATE TABLE IF NOT EXISTS app_settings (
             id INTEGER PRIMARY KEY CHECK (id = 1),
-            username TEXT NOT NULL,
-            api_key TEXT NOT NULL
+            server_url TEXT NOT NULL,
+            platforms TEXT NOT NULL
         )",
         [],
     )?;
 
-    // Migration: add platforms column if it doesn't exist
-    let _ = conn.execute("ALTER TABLE app_config ADD COLUMN platforms TEXT NOT NULL DEFAULT 'codeforces.com,leetcode.com,atcoder.jp,codechef.com'", []);
+    // Set defaults if empty
+    conn.execute("INSERT OR IGNORE INTO app_settings (id, server_url, platforms) VALUES (1, 'https://cp-companion-server-production.up.railway.app/api', 'codeforces.com,leetcode.com,atcoder.jp,codechef.com,geeksforgeeks.org,hackerrank.com')", [])?;
 
     Ok(conn)
 }
@@ -105,17 +104,13 @@ pub fn get_upcoming_contests(conn: &Connection) -> Result<Vec<Contest>> {
 
 pub fn get_config(conn: &Connection) -> Result<Option<AppConfig>> {
     let mut stmt =
-        conn.prepare("SELECT username, api_key, platforms FROM app_config WHERE id = 1")?;
+        conn.prepare("SELECT server_url, platforms FROM app_settings WHERE id = 1")?;
     let mut rows = stmt.query([])?;
 
     if let Some(row) = rows.next()? {
-        let platforms: rusqlite::Result<String> = row.get(2);
         Ok(Some(AppConfig {
-            username: row.get(0)?,
-            api_key: row.get(1)?,
-            platforms: platforms.unwrap_or_else(|_| {
-                "codeforces.com,leetcode.com,atcoder.jp,codechef.com".to_string()
-            }),
+            server_url: row.get(0)?,
+            platforms: row.get(1)?,
         }))
     } else {
         Ok(None)
@@ -124,13 +119,12 @@ pub fn get_config(conn: &Connection) -> Result<Option<AppConfig>> {
 
 pub fn save_config(
     conn: &Connection,
-    username: &str,
-    api_key: &str,
+    server_url: &str,
     platforms: &str,
 ) -> Result<()> {
     conn.execute(
-        "INSERT OR REPLACE INTO app_config (id, username, api_key, platforms) VALUES (1, ?1, ?2, ?3)",
-        [username, api_key, platforms],
+        "INSERT OR REPLACE INTO app_settings (id, server_url, platforms) VALUES (1, ?1, ?2)",
+        [server_url, platforms],
     )?;
     Ok(())
 }
