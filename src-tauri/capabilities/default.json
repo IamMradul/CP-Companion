@@ -10,7 +10,6 @@
     "core:window:allow-show",
     "core:window:allow-set-focus",
     "core:window:allow-close",
-    "opener:default",
-    "autostart:default"
+    "opener:default"
   ]
 }

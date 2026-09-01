@@ -7,7 +7,6 @@ use std::sync::Mutex;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::WindowEvent;
 use tauri::{Manager, State};
-use tauri_plugin_autostart::MacosLauncher;
 
 struct AppState {
     db: Mutex<Connection>,
@@ -19,7 +18,10 @@ async fn fetch_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, Stri
         let conn = state.db.lock().unwrap();
         match get_config(&conn) {
             Ok(Some(config)) => (config.server_url, config.platforms),
-            _ => ("https://don-airlines-registered-announcement.trycloudflare.com/api".to_string(), "codeforces.com,leetcode.com,atcoder.jp,codechef.com".to_string()),
+            _ => (
+                "https://don-airlines-registered-announcement.trycloudflare.com/api".to_string(),
+                "codeforces.com,leetcode.com,atcoder.jp,codechef.com".to_string(),
+            ),
         }
     };
 
@@ -77,10 +79,7 @@ fn get_api_config(state: State<'_, AppState>) -> Result<Option<ApiConfigResponse
 }
 
 #[tauri::command]
-fn save_api_config(
-    state: State<'_, AppState>,
-    platforms: Vec<String>,
-) -> Result<(), String> {
+fn save_api_config(state: State<'_, AppState>, platforms: Vec<String>) -> Result<(), String> {
     let conn = state.db.lock().unwrap();
     let platforms_str = platforms.join(",");
     let server_url = match get_config(&conn) {
@@ -190,15 +189,105 @@ fn open_main_app(app: tauri::AppHandle) {
     }
 }
 
+#[tauri::command]
+async fn enable_autostart() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::core::h;
+        use windows::ApplicationModel::StartupTask;
+
+        let task_op = StartupTask::GetAsync(h!("CPCompanionStartup")).map_err(|e| e.to_string())?;
+        let task = task_op.get().map_err(|e| e.to_string())?;
+        let enable_op = task.RequestEnableAsync().map_err(|e| e.to_string())?;
+        let state = enable_op.get().map_err(|e| e.to_string())?;
+
+        use windows::ApplicationModel::StartupTaskState;
+        if state == StartupTaskState::Enabled || state == StartupTaskState::EnabledByPolicy {
+            Ok(())
+        } else {
+            // For Desktop Bridge MSIX apps, RequestEnableAsync often returns Disabled.
+            // In this case, we must ask the user to manually enable it.
+            Err("DISABLED_BY_SYSTEM".to_string())
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(())
+    }
+}
+
+#[tauri::command]
+async fn disable_autostart() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::core::h;
+        use windows::ApplicationModel::StartupTask;
+        let task_op = StartupTask::GetAsync(h!("CPCompanionStartup")).map_err(|e| e.to_string())?;
+        let task = task_op.get().map_err(|e| e.to_string())?;
+        task.Disable().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(())
+    }
+}
+
+#[tauri::command]
+async fn is_autostart_enabled() -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::core::h;
+        use windows::ApplicationModel::{StartupTask, StartupTaskState};
+        let task_op = StartupTask::GetAsync(h!("CPCompanionStartup")).map_err(|e| e.to_string())?;
+        let task = task_op.get().map_err(|e| e.to_string())?;
+        let state = task.State().map_err(|e| e.to_string())?;
+        Ok(state == StartupTaskState::Enabled)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+async fn open_startup_settings() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("taskmgr")
+            .args(&["/0", "/startup"])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn is_msix() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Foundation::APPMODEL_ERROR_NO_PACKAGE;
+        use windows::Win32::Storage::Packaging::Appx::GetCurrentPackageFullName;
+        unsafe {
+            use windows::core::PWSTR;
+            let mut length = 0u32;
+            let err = GetCurrentPackageFullName(&mut length, PWSTR::null());
+            err != APPMODEL_ERROR_NO_PACKAGE
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_autostart::init(
-            MacosLauncher::LaunchAgent,
-            Some(vec!["--autostart"]),
-        ))
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -240,8 +329,8 @@ pub fn run() {
                             SetWindowLongPtrW(hwnd as _, GWL_STYLE, new_style);
 
                             let ex_style = GetWindowLongPtrW(hwnd as _, GWL_EXSTYLE);
-                            let new_ex_style =
-                                (ex_style & !(WS_EX_APPWINDOW as isize)) | (WS_EX_TOOLWINDOW as isize);
+                            let new_ex_style = (ex_style & !(WS_EX_APPWINDOW as isize))
+                                | (WS_EX_TOOLWINDOW as isize);
                             SetWindowLongPtrW(hwnd as _, GWL_EXSTYLE, new_ex_style);
 
                             let progman_name: Vec<u16> =
@@ -255,10 +344,28 @@ pub fn run() {
                 }
             }
 
-            let args: Vec<String> = std::env::args().collect();
-            let is_autostart = args.iter().any(|arg| arg == "--autostart");
+            let mut is_startup = false;
+            #[cfg(target_os = "windows")]
+            {
+                use windows::ApplicationModel::Activation::ActivationKind;
+                use windows::ApplicationModel::AppInstance;
+                if let Ok(args) = AppInstance::GetActivatedEventArgs() {
+                    if let Ok(kind) = args.Kind() {
+                        if kind == ActivationKind::StartupTask {
+                            is_startup = true;
+                        }
+                    }
+                }
+            }
 
-            if !is_autostart {
+            // Fallback heuristic for non-MSIX or legacy startup
+            if !is_startup {
+                is_startup = std::env::current_dir()
+                    .map(|p| p.to_string_lossy().to_lowercase().contains("system32"))
+                    .unwrap_or(false);
+            }
+
+            if !is_startup {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
@@ -318,7 +425,12 @@ pub fn run() {
             get_api_config,
             save_api_config,
             get_available_platforms,
-            check_for_updates
+            check_for_updates,
+            enable_autostart,
+            disable_autostart,
+            is_autostart_enabled,
+            open_startup_settings,
+            is_msix
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

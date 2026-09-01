@@ -103,8 +103,7 @@ pub fn get_upcoming_contests(conn: &Connection) -> Result<Vec<Contest>> {
 }
 
 pub fn get_config(conn: &Connection) -> Result<Option<AppConfig>> {
-    let mut stmt =
-        conn.prepare("SELECT server_url, platforms FROM app_settings WHERE id = 1")?;
+    let mut stmt = conn.prepare("SELECT server_url, platforms FROM app_settings WHERE id = 1")?;
     let mut rows = stmt.query([])?;
 
     if let Some(row) = rows.next()? {
@@ -117,11 +116,7 @@ pub fn get_config(conn: &Connection) -> Result<Option<AppConfig>> {
     }
 }
 
-pub fn save_config(
-    conn: &Connection,
-    server_url: &str,
-    platforms: &str,
-) -> Result<()> {
+pub fn save_config(conn: &Connection, server_url: &str, platforms: &str) -> Result<()> {
     conn.execute(
         "INSERT OR REPLACE INTO app_settings (id, server_url, platforms) VALUES (1, ?1, ?2)",
         [server_url, platforms],

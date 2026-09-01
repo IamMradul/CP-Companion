@@ -1,6 +1,6 @@
 [package]
 name = "cp-companion"
-version = "3.1.4"
+version = "3.1.5"
 description = "A Tauri App"
 authors = ["Siddhart Paul", "Mradul Gupta"]
 edition = "2021"
@@ -21,11 +21,14 @@ reqwest = { version = "0.11", features = ["json"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 tokio = { version = "1", features = ["full"] }
 chrono = "0.4"
-tauri-plugin-autostart = "2.5.1"
 tauri-plugin-single-instance = "2.4.2"
+windows = { version = "0.58", features = ["ApplicationModel", "ApplicationModel_Activation", "Foundation", "Win32_System_WinRT", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "System", "Win32_Storage_Packaging_Appx"] }
+tauri-plugin-dialog = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.58", features = ["ApplicationModel", "ApplicationModel_Activation", "Foundation", "Win32_System_WinRT", "Win32_Foundation"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-autostart = "2"
 tauri-plugin-window-state = "2"

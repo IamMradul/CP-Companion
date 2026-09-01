@@ -13,17 +13,17 @@
   100% { transform: translateX(100%); }
 }
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 0 0% 98%;
     --foreground: 0 0% 9%;
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --background: 0 0% 5%;
-      --foreground: 0 0% 95%;
-    }
+  .dark {
+    --background: 0 0% 5%;
+    --foreground: 0 0% 95%;
   }
 
   body {

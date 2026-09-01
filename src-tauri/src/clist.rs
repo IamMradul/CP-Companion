@@ -8,7 +8,7 @@ pub async fn fetch_contests(
     platforms: &str,
 ) -> Result<Vec<Contest>, Box<dyn Error>> {
     let client = Client::builder().user_agent("CP-Companion/1.0").build()?;
-    
+
     let url = if platforms.trim().is_empty() {
         format!("{}/contests", server_url)
     } else {

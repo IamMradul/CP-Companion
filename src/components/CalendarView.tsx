@@ -37,11 +37,11 @@ export function CalendarView() {
 
   const getPlatformColor = (platform: string) => {
     switch (platform.toLowerCase()) {
-      case "codeforces": return "bg-blue-500 text-white";
-      case "leetcode": return "bg-orange-500 text-white";
-      case "atcoder": return "bg-zinc-700 text-white";
-      case "codechef": return "bg-yellow-600 text-white";
-      default: return "bg-white/20 text-white";
+      case "codeforces": return "bg-blue-500 text-black dark:text-white";
+      case "leetcode": return "bg-orange-500 text-black dark:text-white";
+      case "atcoder": return "bg-zinc-700 text-black dark:text-white";
+      case "codechef": return "bg-yellow-600 text-black dark:text-white";
+      default: return "bg-black/5 dark:bg-black/20 dark:bg-white/20 text-black dark:text-white";
     }
   };
 
@@ -52,14 +52,14 @@ export function CalendarView() {
     <div className="flex flex-col h-full overflow-hidden p-2">
       {/* Calendar Header */}
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-sm font-semibold text-white/90">
+        <h2 className="text-sm font-semibold text-black/90 dark:text-white/90">
           {monthNames[month]} {year}
         </h2>
         <div className="flex items-center gap-1">
-          <button onClick={prevMonth} className="p-1 hover:bg-white/10 rounded text-white/70">
+          <button onClick={prevMonth} className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded text-black/70 dark:text-white/70">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button onClick={nextMonth} className="p-1 hover:bg-white/10 rounded text-white/70">
+          <button onClick={nextMonth} className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded text-black/70 dark:text-white/70">
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
@@ -68,12 +68,12 @@ export function CalendarView() {
       {/* Weekdays */}
       <div className="grid grid-cols-7 mb-1">
         {weekDays.map(day => (
-          <div key={day} className="text-center text-[9px] font-semibold text-white/40">{day}</div>
+          <div key={day} className="text-center text-[9px] font-semibold text-black/50 dark:text-white/40">{day}</div>
         ))}
       </div>
 
       {/* Calendar Grid */}
-      <div className="grid grid-cols-7 flex-1 border border-white/5 bg-white/5 rounded-lg overflow-hidden auto-rows-fr">
+      <div className="grid grid-cols-7 flex-1 border border-black/10 dark:border-white/5 bg-black/5 dark:bg-white/5 rounded-lg overflow-hidden auto-rows-fr">
         {days.map((d, i) => {
           // Find contests for this day (assuming contests array has ISO dates)
           const cellDate = new Date(year, d.currentMonth ? month : (d.day > 15 ? month - 1 : month + 1), d.day);
@@ -87,8 +87,8 @@ export function CalendarView() {
           const isToday = new Date().toDateString() === cellDate.toDateString();
 
           return (
-            <div key={i} className={`border-r border-b border-white/5 p-1 relative flex flex-col gap-0.5 overflow-hidden min-h-0 ${d.currentMonth ? 'bg-transparent' : 'bg-black/20'}`}>
-              <div className={`text-[10px] text-center mb-0.5 shrink-0 ${isToday ? 'bg-blue-500 text-white rounded-full w-4 h-4 mx-auto flex items-center justify-center' : (d.currentMonth ? 'text-white/70' : 'text-white/20')}`}>
+            <div key={i} className={`border-r border-b border-black/10 dark:border-white/5 p-1 relative flex flex-col gap-0.5 overflow-hidden min-h-0 ${d.currentMonth ? 'bg-transparent' : 'bg-black/5 dark:bg-black/20'}`}>
+              <div className={`text-[10px] text-center mb-0.5 shrink-0 ${isToday ? 'bg-blue-500 text-black dark:text-white rounded-full w-4 h-4 mx-auto flex items-center justify-center' : (d.currentMonth ? 'text-black/70 dark:text-white/70' : 'text-black/30 dark:text-white/20')}`}>
                 {d.day}
               </div>
               <div className="flex flex-col gap-[1px] overflow-y-auto custom-scrollbar flex-1 min-h-0">

@@ -1,17 +1,19 @@
 {
   "name": "cp-companion",
   "private": true,
-  "version": "3.1.4",
+  "version": "3.1.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "pack:msix": "npm run tauri build && copy /Y Package.appxmanifest msix-dist\\Package.appxmanifest && copy /Y src-tauri\\target\\release\\cp-companion.exe msix-dist\\cp-companion.exe && winapp pack .\\msix-dist --cert .\\store-devcert.pfx"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-autostart": "^2.5.1",
+    "@tauri-apps/plugin-dialog": "^2.7.3",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-window-state": "^2.4.1",
     "clsx": "^2.1.1",

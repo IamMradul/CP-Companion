@@ -5,10 +5,12 @@ import { WidgetView } from "./components/WidgetView";
 import { CalendarView } from "./components/CalendarView";
 import { RainmeterWidget } from "./components/RainmeterWidget";
 import { useContestStore } from "./stores/useContestStore";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { enable, isEnabled, disable } from '@tauri-apps/plugin-autostart';
-import { UpdateNotification } from "./components/UpdateNotification";
+import { useThemeStore } from "./stores/useThemeStore";
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { message } from '@tauri-apps/plugin-dialog';
+import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
+import { UpdateNotification } from './components/UpdateNotification';
 import "./App.css";
 
 function App() {
@@ -20,6 +22,32 @@ function App() {
   const [availablePlatforms, setAvailablePlatforms] = useState<{ id: string, name: string }[]>([]);
   const [platformSearchQuery, setPlatformSearchQuery] = useState("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const { theme, setTheme } = useThemeStore();
+
+  useEffect(() => {
+    const initEvent = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      checkAutostart();
+      listen<"light" | "dark" | "system">("theme-updated", (event) => {
+        if (event.payload) {
+          setTheme(event.payload);
+        }
+      });
+    };
+    initEvent();
+  }, [setTheme]);
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    root.classList.remove("light", "dark");
+    
+    if (theme === "system") {
+      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      root.classList.add(systemTheme);
+    } else {
+      root.classList.add(theme);
+    }
+  }, [theme]);
 
   useEffect(() => {
     // Determine which window we are rendering
@@ -29,20 +57,40 @@ function App() {
         setWindowLabel(appWindow.label);
 
         if (appWindow.label === "main") {
+          // Main window fetches contests on startup ONLY if 24 hours have passed
+          const lastAutoFetch = localStorage.getItem("last_auto_fetch_time");
+          const now = Date.now();
+          if (!lastAutoFetch || now - parseInt(lastAutoFetch) >= 86400000) {
+            fetchContests().then(() => {
+              localStorage.setItem("last_auto_fetch_time", Date.now().toString());
+            });
+          } else {
+            // Load from cache instead of hitting the API
+            try {
+              const cached = await invoke<any[]>("get_cached_contests");
+              if (cached) {
+                useContestStore.setState({ contests: cached, isLoading: false, error: null });
+              }
+            } catch (err) {
+              console.error("Failed to load cached contests:", err);
+            }
+          }
+          
           try {
-            let autoStartStatus = await isEnabled();
-            
             // Check if this is the first time running the app
             const hasRunBefore = localStorage.getItem("cp_companion_has_run");
             if (!hasRunBefore) {
-              if (!autoStartStatus) {
-                await enable();
-                autoStartStatus = true;
+              if (!autostartEnabled) {
+                try {
+                  const msix = await invoke("is_msix");
+                  if (msix) await invoke("enable_autostart");
+                  else await enable();
+                  setAutostartEnabled(true);
+                } catch (e) {}
               }
               localStorage.setItem("cp_companion_has_run", "true");
             }
             
-            setAutostartEnabled(autoStartStatus);
             const config: any = await invoke("get_api_config");
             if (config) {
               if (config.platforms && Array.isArray(config.platforms)) {
@@ -86,22 +134,68 @@ function App() {
       } catch (e) {
         // Fallback for browser testing
         setWindowLabel("main");
+        fetchContests();
       }
     };
     init();
-    fetchContests();
   }, [fetchContests]);
+
+  const checkAutostart = async () => {
+    try {
+      const msix = await invoke("is_msix");
+      if (msix) {
+        const enabled = await invoke<boolean>("is_autostart_enabled");
+        setAutostartEnabled(enabled);
+      } else {
+        const enabled = await isEnabled();
+        setAutostartEnabled(enabled);
+      }
+    } catch (e) {
+      console.error("Failed to check autostart status", e);
+    }
+  };
+
+  const handleRefresh = async () => {
+    const lastRefresh = localStorage.getItem("last_refresh_time");
+    const now = Date.now();
+    // 1 hour = 60 * 60 * 1000 = 3600000 ms
+    if (lastRefresh && now - parseInt(lastRefresh) < 3600000) {
+      alert("You can only refresh once per hour.");
+      return;
+    }
+    await fetchContests();
+    localStorage.setItem("last_refresh_time", now.toString());
+  };
 
   const toggleAutostart = async () => {
     try {
-      if (autostartEnabled) {
-        await disable();
+      const msix = await invoke("is_msix");
+      if (msix) {
+        if (autostartEnabled) {
+          await invoke("disable_autostart");
+        } else {
+          await invoke("enable_autostart");
+        }
       } else {
-        await enable();
+        if (autostartEnabled) {
+          await disable();
+        } else {
+          await enable();
+        }
       }
       setAutostartEnabled(!autostartEnabled);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to toggle autostart", e);
+      if (e === "DISABLED_BY_SYSTEM") {
+        await message("Windows requires you to enable this app manually.\n\nSteps:\n1. Click 'Open Task Manager' below.\n2. Find 'CP Companion' in the list.\n3. Right-click it and select 'Enable'.", { title: 'Action Required', kind: 'info', okLabel: 'Open Task Manager' });
+        try {
+          await invoke("open_startup_settings");
+        } catch (err) {
+          console.error("Failed to open settings", err);
+        }
+      } else {
+        await message(`Failed to toggle autostart: ${e}`, { title: 'Error', kind: 'error' });
+      }
     }
   };
 
@@ -179,40 +273,40 @@ function App() {
 
   // The rest is the Main App window
   return (
-    <div className="h-screen w-screen bg-[#111] flex flex-col dark text-foreground">
+    <div className="h-screen w-screen bg-slate-50 dark:bg-[#111] flex flex-col text-foreground">
       {/* Main Glass Panel */}
-      <div className="flex-1 flex flex-col overflow-hidden relative border border-white/5 bg-[#1a1a1a]">
+      <div className="flex-1 flex flex-col overflow-hidden relative border border-black/10 dark:border-white/5 bg-white dark:bg-[#1a1a1a]">
         {/* Update Notification */}
         <UpdateNotification />
         {/* Header */}
         <header
           data-tauri-drag-region
-          className="h-12 border-b border-white/5 flex items-center justify-between px-3 bg-white/[0.02] cursor-grab active:cursor-grabbing shrink-0"
+          className="h-12 border-b border-black/10 dark:border-white/5 flex items-center justify-between px-3 bg-white/[0.02] cursor-grab active:cursor-grabbing shrink-0"
         >
           <div className="flex items-center gap-2 font-medium tracking-tight pointer-events-none">
-            <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center">
-              <Trophy className="w-3 h-3 text-white/80" />
+            <div className="w-5 h-5 rounded bg-black/10 dark:bg-white/10 flex items-center justify-center">
+              <Trophy className="w-3 h-3 text-black/80 dark:text-white/80" />
             </div>
-            <span className="text-sm text-white/90">CP Companion</span>
+            <span className="text-sm text-black/90 dark:text-white/90">CP Companion</span>
           </div>
           <div className="flex items-center gap-1.5">
             <button
-              onClick={() => fetchContests()}
-              className={`p-1.5 text-white/40 hover:text-white/90 transition-colors rounded-md hover:bg-white/5 ${isLoading ? 'animate-spin text-white/90' : ''}`}
+              onClick={handleRefresh}
+              className={`p-1.5 text-black/50 dark:text-white/40 hover:text-black/90 dark:hover:text-white/90 transition-colors rounded-md hover:bg-black/5 dark:hover:bg-white/5 ${isLoading ? 'animate-spin text-black/90 dark:text-white/90' : ''}`}
               title="Refresh Contests"
             >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setView(view === "widget" ? "calendar" : "widget")}
-              className={`p-1.5 transition-colors rounded-md hover:bg-white/5 ${view === 'calendar' ? 'text-white/90 bg-white/10' : 'text-white/40 hover:text-white/90'}`}
+              className={`p-1.5 transition-colors rounded-md hover:bg-black/5 dark:hover:bg-white/5 ${view === 'calendar' ? 'text-black/90 dark:text-white/90 bg-black/10 dark:bg-white/10' : 'text-black/50 dark:text-white/40 hover:text-black/90 dark:hover:text-white/90'}`}
               title={view === "widget" ? "Calendar View" : "List View"}
             >
               {view === "widget" ? <Calendar className="w-3.5 h-3.5" /> : <LayoutGrid className="w-3.5 h-3.5" />}
             </button>
             <button
               onClick={() => setView(view === "settings" ? "widget" : "settings")}
-              className={`p-1.5 transition-colors rounded-md hover:bg-white/5 ${view === 'settings' ? 'text-white/90 bg-white/10' : 'text-white/40 hover:text-white/90'}`}
+              className={`p-1.5 transition-colors rounded-md hover:bg-black/5 dark:hover:bg-white/5 ${view === 'settings' ? 'text-black/90 dark:text-white/90 bg-black/10 dark:bg-white/10' : 'text-black/50 dark:text-white/40 hover:text-black/90 dark:hover:text-white/90'}`}
               title="Settings"
             >
               {view === "settings" ? <X className="w-3.5 h-3.5" /> : <Settings className="w-3.5 h-3.5" />}
@@ -227,24 +321,47 @@ function App() {
           {view === "calendar" && <CalendarView />}
           {view === "settings" && (
             <div className="p-4 flex flex-col gap-4">
-              <h2 className="text-sm font-semibold text-white/90">Settings</h2>
+              <h2 className="text-sm font-semibold text-black/90 dark:text-white/90">Settings</h2>
 
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col gap-3">
-                <h3 className="text-xs font-semibold text-white/70 uppercase tracking-widest">Application</h3>
+              <div className="bg-black/5 dark:bg-white/5 border border-black/15 dark:border-white/10 rounded-xl p-4 flex flex-col gap-3">
+                <h3 className="text-xs font-semibold text-black/70 dark:text-white/70 uppercase tracking-widest">Application</h3>
 
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-white/80">Launch on System Startup</span>
+                  <span className="text-sm text-black/80 dark:text-white/80">Theme</span>
+                  <div className="flex items-center gap-1 bg-black/5 dark:bg-white/5 p-1 rounded-lg border border-black/10 dark:border-white/5">
+                    {(['light', 'dark', 'system'] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={async () => {
+                          setTheme(t);
+                          const { emit } = await import("@tauri-apps/api/event");
+                          await emit("theme-updated", t);
+                        }}
+                        className={`text-xs px-2.5 py-1 rounded-md capitalize transition-colors ${
+                          theme === t
+                            ? 'bg-white dark:bg-black/40 text-black dark:text-white shadow-sm border border-black/5 dark:border-white/5'
+                            : 'text-black/50 dark:text-white/50 hover:text-black/80 dark:hover:text-white/80'
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-black/80 dark:text-white/80">Launch on System Startup</span>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" className="sr-only peer" checked={autostartEnabled} onChange={toggleAutostart} />
-                    <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                    <div className="w-9 h-5 bg-black/10 dark:bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-black/20 dark:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
                   </label>
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-white/80">Desktop Widget</span>
+                  <span className="text-sm text-black/80 dark:text-white/80">Desktop Widget</span>
                   <button
                     onClick={showWidget}
-                    className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded transition-colors"
+                    className="text-xs bg-black/10 dark:bg-white/10 hover:bg-black/5 dark:hover:bg-white/20 text-black dark:text-white px-3 py-1.5 rounded transition-colors"
                   >
                     Show Widget
                   </button>
@@ -253,12 +370,12 @@ function App() {
 
 
 
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col min-h-[300px]">
+              <div className="bg-black/5 dark:bg-white/5 border border-black/15 dark:border-white/10 rounded-xl p-4 flex flex-col min-h-[300px]">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xs font-semibold text-white/70 uppercase tracking-widest">Preferred Platforms</h3>
+                  <h3 className="text-xs font-semibold text-black/70 dark:text-white/70 uppercase tracking-widest">Preferred Platforms</h3>
                   <div className="flex gap-2">
-                    <button onClick={selectAll} className="text-[10px] bg-white/5 hover:bg-white/10 border border-white/5 text-white/70 px-2 py-1 rounded transition-colors">Select All</button>
-                    <button onClick={unselectAll} className="text-[10px] bg-white/5 hover:bg-white/10 border border-white/5 text-white/70 px-2 py-1 rounded transition-colors">Clear All</button>
+                    <button onClick={selectAll} className="text-[10px] bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 border border-black/10 dark:border-white/5 text-black/70 dark:text-white/70 px-2 py-1 rounded transition-colors">Select All</button>
+                    <button onClick={unselectAll} className="text-[10px] bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 border border-black/10 dark:border-white/5 text-black/70 dark:text-white/70 px-2 py-1 rounded transition-colors">Clear All</button>
                   </div>
                 </div>
                 <input
@@ -266,13 +383,13 @@ function App() {
                   placeholder="Search platforms..."
                   value={platformSearchQuery}
                   onChange={e => setPlatformSearchQuery(e.target.value)}
-                  className="w-full bg-black/20 border border-white/10 rounded p-2 text-sm text-white focus:border-blue-500 outline-none transition-colors mb-3"
+                  className="w-full bg-black/5 dark:bg-black/20 border border-black/15 dark:border-white/10 rounded p-2 text-sm text-black dark:text-white focus:border-blue-500 outline-none transition-colors mb-3"
                 />
                 <div className="grid grid-cols-2 gap-3 max-h-60 overflow-y-auto custom-scrollbar pr-1 flex-1">
                   {filteredPlatforms.map(platform => (
-                    <label key={platform.id} className="flex items-center gap-2.5 cursor-pointer group bg-black/20 hover:bg-black/40 p-2 rounded-lg border border-white/5 hover:border-white/10 transition-all">
-                      <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${selectedPlatforms.includes(platform.id) ? 'bg-blue-500 border-blue-500' : 'border-white/20 group-hover:border-white/40 bg-black/40'}`}>
-                        {selectedPlatforms.includes(platform.id) && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                    <label key={platform.id} className="flex items-center gap-2.5 cursor-pointer group bg-black/5 dark:bg-black/20 hover:bg-white/40 dark:bg-black/40 p-2 rounded-lg border border-black/10 dark:border-white/5 hover:border-black/15 dark:border-white/10 transition-all">
+                      <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${selectedPlatforms.includes(platform.id) ? 'bg-blue-500 border-blue-500' : 'border-black/20 dark:border-white/20 group-hover:border-black/30 dark:hover:border-white/40 bg-white/40 dark:bg-black/40'}`}>
+                        {selectedPlatforms.includes(platform.id) && <svg className="w-2.5 h-2.5 text-black dark:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                       </div>
                       <input
                         type="checkbox"
@@ -290,11 +407,11 @@ function App() {
                           e.currentTarget.style.opacity = '0.5';
                         }}
                       />
-                      <span className="text-sm text-white/70 group-hover:text-white transition-colors truncate">{platform.name}</span>
+                      <span className="text-sm text-black/70 dark:text-white/70 group-hover:text-black dark:hover:text-white transition-colors truncate">{platform.name}</span>
                     </label>
                   ))}
                   {filteredPlatforms.length === 0 && (
-                    <div className="col-span-2 text-center py-4 text-white/40 text-sm">
+                    <div className="col-span-2 text-center py-4 text-black/50 dark:text-white/40 text-sm">
                       No platforms found.
                     </div>
                   )}

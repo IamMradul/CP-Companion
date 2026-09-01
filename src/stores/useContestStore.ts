@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 
 export interface Contest {
   id: number;
@@ -29,6 +30,7 @@ export const useContestStore = create<ContestState>((set) => ({
       // Call the Rust backend function
       const data = await invoke<Contest[]>("fetch_contests");
       set({ contests: data, isLoading: false });
+      emit("contests-updated", data);
     } catch (err: any) {
       console.error("Failed to fetch contests:", err);
       // Fallback: try fetching cached contests if fetch_contests fails fully

@@ -30,7 +30,7 @@ export function ContestCard({ contest }: ContestCardProps) {
       case "atcoder":
         return "text-zinc-400 bg-zinc-500/10 border-zinc-500/20";
       default:
-        return "text-white/70 bg-white/5 border-white/10";
+        return "text-black/70 dark:text-white/70 bg-black/5 dark:bg-white/5 border-black/15 dark:border-white/10";
     }
   };
 
@@ -46,7 +46,7 @@ export function ContestCard({ contest }: ContestCardProps) {
       className="glass-button p-4 text-left w-full group relative overflow-hidden cursor-pointer"
     >
       <div className="flex justify-between items-start mb-2 relative z-10">
-        <h3 className="font-semibold text-white/90 group-hover:text-white transition-colors pr-2">
+        <h3 className="font-semibold text-black/90 dark:text-white/90 group-hover:text-black dark:group-hover:text-white transition-colors pr-2">
           {contest.name}
         </h3>
         <span
@@ -59,23 +59,23 @@ export function ContestCard({ contest }: ContestCardProps) {
       </div>
       <div className="flex items-end justify-between mt-4 relative z-10">
         <div className="flex flex-col">
-          <span className="text-xs text-white/50 mb-0.5">Starts in</span>
-          <span className="text-2xl font-mono font-bold text-white tracking-tight">
+          <span className="text-xs text-black/60 dark:text-white/50 mb-0.5">Starts in</span>
+          <span className="text-2xl font-mono font-bold text-black dark:text-white tracking-tight">
             {timeLeft}
           </span>
         </div>
-        <div className="text-sm text-white/50 font-medium">
+        <div className="text-sm text-black/60 dark:text-white/50 font-medium">
           {formatDuration(contest.durationSeconds)}
         </div>
       </div>
-      <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between text-white/40 group-hover:text-white/70 transition-colors relative z-10">
+      <div className="mt-3 pt-3 border-t border-black/15 dark:border-white/10 flex items-center justify-between text-black/50 dark:text-white/40 group-hover:text-black/70 dark:group-hover:text-white/70 transition-colors relative z-10">
         <span className="text-xs truncate pr-2" title={contest.url}>
           {contest.url}
         </span>
         <div className="flex items-center gap-3 shrink-0">
           <button 
             onClick={(e) => { e.stopPropagation(); addToGooglesCalendar(contest); }}
-            className="flex items-center justify-center p-1.5 bg-white/5 hover:bg-white/20 border border-white/10 rounded-md text-white/60 hover:text-white transition-colors"
+            className="flex items-center justify-center p-1.5 bg-black/5 dark:bg-white/5 hover:bg-black/5 dark:hover:bg-white/20 border border-black/15 dark:border-white/10 rounded-md text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white transition-colors"
             title="Add to Google Calendar"
           >
             <CalendarDays className="w-3.5 h-3.5" />

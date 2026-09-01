@@ -22,3 +22,31 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Development certificate
+devcert.pfx
+
+# MSIX local packaging output
+/msix-dist/
+/Assets/
+
+# Development signing certificate - NEVER commit this
+devcert.pfx
+
+# Generated MSIX packages
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+
+Package.appxmanifest
+src-tauri/icons/cp-companion_logo.png
+
+# Development certificate
+devcert-new.pfx
+
+# Development certificate
+mradul-gupta-devcert.pfx
+
+# Development certificate
+store-devcert.pfx

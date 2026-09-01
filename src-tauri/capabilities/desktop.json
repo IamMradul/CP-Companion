@@ -9,6 +9,8 @@
     "main"
   ],
   "permissions": [
-    "window-state:default"
+    "window-state:default",
+    "autostart:default",
+    "dialog:default"
   ]
 }
