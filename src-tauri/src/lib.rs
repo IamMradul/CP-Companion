@@ -14,28 +14,46 @@ struct AppState {
 
 #[tauri::command]
 async fn fetch_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, String> {
-    let (server_url, platforms) = {
+    let (server_url, platforms, max_known_users, device_id) = {
         let conn = state.db.lock().unwrap();
         match get_config(&conn) {
-            Ok(Some(config)) => (config.server_url, config.platforms),
+            Ok(Some(config)) => (
+                if config.server_url.contains("localhost") {
+                    "https://don-airlines-registered-announcement.trycloudflare.com/api".to_string()
+                } else {
+                    config.server_url
+                }, 
+                config.platforms, 
+                config.max_known_users,
+                config.device_id
+            ),
             _ => (
                 "https://don-airlines-registered-announcement.trycloudflare.com/api".to_string(),
                 "codeforces.com,leetcode.com,atcoder.jp,codechef.com".to_string(),
+                0,
+                "".to_string(),
             ),
         }
     };
 
-    // 1. Fetch from Backend API
-    match clist::fetch_contests(&server_url, &platforms).await {
-        Ok(contests) => {
+    // 1. Fetch from Backend API (empty platforms to fetch ALL)
+    match clist::fetch_contests(&server_url, "", max_known_users, &device_id).await {
+        Ok((contests, returned_max)) => {
             // 2. Save to SQLite Cache
             let conn = state.db.lock().unwrap();
+            
+            if let Some(new_max) = returned_max {
+                if new_max > max_known_users {
+                    let _ = database::update_max_known_users(&conn, new_max);
+                }
+            }
+
             if let Err(e) = insert_contests(&conn, &contests) {
                 eprintln!("Failed to cache contests: {}", e);
             }
 
-            // 3. Return updated contests
-            Ok(contests)
+            // 3. Return updated contests filtered by selected platforms
+            get_upcoming_contests(&conn, &platforms).map_err(|e| e.to_string())
         }
         Err(e) => {
             eprintln!(
@@ -44,7 +62,7 @@ async fn fetch_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, Stri
             );
             // Fallback to cache
             let conn = state.db.lock().unwrap();
-            get_upcoming_contests(&conn).map_err(|e| e.to_string())
+            get_upcoming_contests(&conn, &platforms).map_err(|e| e.to_string())
         }
     }
 }
@@ -52,7 +70,11 @@ async fn fetch_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, Stri
 #[tauri::command]
 fn get_cached_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, String> {
     let conn = state.db.lock().unwrap();
-    get_upcoming_contests(&conn).map_err(|e| e.to_string())
+    let platforms = match get_config(&conn) {
+        Ok(Some(config)) => config.platforms,
+        _ => "codeforces.com,leetcode.com,atcoder.jp,codechef.com".to_string(),
+    };
+    get_upcoming_contests(&conn, &platforms).map_err(|e| e.to_string())
 }
 
 #[derive(serde::Serialize)]
@@ -93,17 +115,34 @@ fn save_api_config(state: State<'_, AppState>, platforms: Vec<String>) -> Result
 async fn get_available_platforms(
     state: State<'_, AppState>,
 ) -> Result<Vec<clist::ClistPlatform>, String> {
-    let server_url = {
+    let (server_url, max_known_users, device_id) = {
         let conn = state.db.lock().unwrap();
         match get_config(&conn) {
-            Ok(Some(config)) => config.server_url,
-            _ => "https://don-airlines-registered-announcement.trycloudflare.com/api".to_string(),
+            Ok(Some(config)) => (
+                if config.server_url.contains("localhost") {
+                    "https://don-airlines-registered-announcement.trycloudflare.com/api".to_string()
+                } else {
+                    config.server_url
+                }, 
+                config.max_known_users, 
+                config.device_id
+            ),
+            _ => ("https://don-airlines-registered-announcement.trycloudflare.com/api".to_string(), 0, "".to_string()),
         }
     };
 
-    clist::fetch_available_platforms(&server_url)
-        .await
-        .map_err(|e| e.to_string())
+    match clist::fetch_available_platforms(&server_url, max_known_users, &device_id).await {
+        Ok((platforms, returned_max)) => {
+            if let Some(new_max) = returned_max {
+                if new_max > max_known_users {
+                    let conn = state.db.lock().unwrap();
+                    let _ = database::update_max_known_users(&conn, new_max);
+                }
+            }
+            Ok(platforms)
+        }
+        Err(e) => Err(e.to_string())
+    }
 }
 
 #[derive(serde::Serialize)]

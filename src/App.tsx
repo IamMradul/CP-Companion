@@ -17,7 +17,7 @@ function App() {
   const [view, setView] = useState<"widget" | "calendar" | "settings">("widget");
   const [windowLabel, setWindowLabel] = useState<string | null>(null);
   const [autostartEnabled, setAutostartEnabled] = useState(false);
-  const { fetchContests, isLoading } = useContestStore();
+  const { fetchContests, loadFromCache, isLoading } = useContestStore();
 
   const [availablePlatforms, setAvailablePlatforms] = useState<{ id: string, name: string }[]>([]);
   const [platformSearchQuery, setPlatformSearchQuery] = useState("");
@@ -60,20 +60,26 @@ function App() {
           // Main window fetches contests on startup ONLY if 24 hours have passed
           const lastAutoFetch = localStorage.getItem("last_auto_fetch_time");
           const now = Date.now();
-          if (!lastAutoFetch || now - parseInt(lastAutoFetch) >= 86400000) {
-            fetchContests().then(() => {
-              localStorage.setItem("last_auto_fetch_time", Date.now().toString());
-            });
-          } else {
-            // Load from cache instead of hitting the API
-            try {
-              const cached = await invoke<any[]>("get_cached_contests");
-              if (cached) {
-                useContestStore.setState({ contests: cached, isLoading: false, error: null });
-              }
-            } catch (err) {
-              console.error("Failed to load cached contests:", err);
+          
+          try {
+            const cached = await invoke<any[]>("get_cached_contests");
+            const isDbEmpty = !cached || cached.length === 0;
+
+            if (isDbEmpty || !lastAutoFetch || now - parseInt(lastAutoFetch) >= 86400000 || now < parseInt(lastAutoFetch)) {
+              fetchContests().then(() => {
+                const state = useContestStore.getState();
+                if (!state.error) {
+                  localStorage.setItem("last_auto_fetch_time", Date.now().toString());
+                }
+              });
+            } else {
+              // Load from cache instead of hitting the API
+              useContestStore.setState({ contests: cached, isLoading: false, error: null });
             }
+          } catch (err) {
+            console.error("Failed to load cached contests:", err);
+            // If checking the DB fails, try to fetch anyway to recover
+            fetchContests();
           }
           
           try {
@@ -97,7 +103,22 @@ function App() {
                 setSelectedPlatforms(config.platforms);
               }
               try {
-                const platforms: any[] = await invoke("get_available_platforms");
+                let platforms: any[] = [];
+                const lastPlatformsFetch = localStorage.getItem("last_platforms_fetch_time");
+                const now = Date.now();
+                if (!lastPlatformsFetch || now - parseInt(lastPlatformsFetch) >= 86400000 || now < parseInt(lastPlatformsFetch)) {
+                  try {
+                    platforms = await invoke("get_available_platforms");
+                    localStorage.setItem("cached_platforms", JSON.stringify(platforms));
+                    localStorage.setItem("last_platforms_fetch_time", Date.now().toString());
+                  } catch (err) {
+                    console.warn("Failed to fetch dynamic platforms, falling back to cache:", err);
+                    platforms = JSON.parse(localStorage.getItem("cached_platforms") || "[]");
+                  }
+                } else {
+                  platforms = JSON.parse(localStorage.getItem("cached_platforms") || "[]");
+                }
+                
                 if (platforms && platforms.length > 0) {
                   const formatted = platforms.map(p => {
                     let niceName = p.name;
@@ -156,15 +177,15 @@ function App() {
   };
 
   const handleRefresh = async () => {
-    const lastRefresh = localStorage.getItem("last_refresh_time");
-    const now = Date.now();
-    // 1 hour = 60 * 60 * 1000 = 3600000 ms
-    if (lastRefresh && now - parseInt(lastRefresh) < 3600000) {
-      alert("You can only refresh once per hour.");
-      return;
-    }
+    // The user clicked refresh, so they expect fresh data from the API!
+    // Force reset the 24 hour timer so that the backend request actually goes through.
+    localStorage.removeItem("last_auto_fetch_time");
+    localStorage.removeItem("last_platforms_fetch_time");
+    
     await fetchContests();
-    localStorage.setItem("last_refresh_time", now.toString());
+    
+    // Restart the 24 hour clock
+    localStorage.setItem("last_auto_fetch_time", Date.now().toString());
   };
 
   const toggleAutostart = async () => {
@@ -222,7 +243,7 @@ function App() {
     // Auto-save platforms
     try {
       await invoke("save_api_config", { platforms: newPlatforms });
-      fetchContests();
+      loadFromCache();
     } catch (e) {
       console.error("Failed to save platforms:", e);
     }
@@ -245,7 +266,7 @@ function App() {
     setSelectedPlatforms(newPlatforms);
     try {
       await invoke("save_api_config", { platforms: newPlatforms });
-      fetchContests();
+      loadFromCache();
     } catch (e) {
       console.error("Failed to save platforms:", e);
     }
@@ -257,7 +278,7 @@ function App() {
     setSelectedPlatforms(newPlatforms);
     try {
       await invoke("save_api_config", { platforms: newPlatforms });
-      fetchContests();
+      loadFromCache();
     } catch (e) {
       console.error("Failed to save platforms:", e);
     }
