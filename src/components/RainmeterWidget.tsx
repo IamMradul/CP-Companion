@@ -39,6 +39,12 @@ export function RainmeterWidget() {
 
     initWidget();
 
+    // Poll the local SQLite cache every 5 seconds to ensure widget stays in sync,
+    // especially on startup when Tauri events might be missed due to race conditions.
+    const pollInterval = setInterval(() => {
+      initWidget();
+    }, 5000);
+
     // Live countdown tick
     const timer = setInterval(() => {
       setTick((t) => t + 1);
@@ -46,6 +52,7 @@ export function RainmeterWidget() {
 
     return () => {
       clearInterval(timer);
+      clearInterval(pollInterval);
       if (unlistenFn) unlistenFn();
     };
   }, []);

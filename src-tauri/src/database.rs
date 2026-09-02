@@ -85,7 +85,7 @@ pub fn insert_contests(conn: &Connection, contests: &[Contest]) -> Result<()> {
 }
 
 pub fn get_upcoming_contests(conn: &Connection, platforms: &str) -> Result<Vec<Contest>> {
-    let platform_list: Vec<&str> = platforms.split(',').filter(|s| !s.is_empty()).collect();
+    let platform_list: Vec<&str> = platforms.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
 
     let mut stmt = conn.prepare(
         "SELECT id, name, platform, start_time, duration_seconds, url 
@@ -148,7 +148,7 @@ pub fn update_max_known_users(conn: &Connection, count: i64) -> Result<()> {
 
 pub fn save_config(conn: &Connection, server_url: &str, platforms: &str) -> Result<()> {
     conn.execute(
-        "INSERT OR REPLACE INTO app_settings (id, server_url, platforms) VALUES (1, ?1, ?2)",
+        "UPDATE app_settings SET server_url = ?1, platforms = ?2 WHERE id = 1",
         [server_url, platforms],
     )?;
     Ok(())

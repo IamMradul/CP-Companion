@@ -57,12 +57,10 @@ async fn fetch_contests(state: State<'_, AppState>) -> Result<Vec<Contest>, Stri
         }
         Err(e) => {
             eprintln!(
-                "Failed to fetch from Backend API: {}. Falling back to cache.",
+                "Failed to fetch from Backend API: {}. Returning error to trigger frontend retry.",
                 e
             );
-            // Fallback to cache
-            let conn = state.db.lock().unwrap();
-            get_upcoming_contests(&conn, &platforms).map_err(|e| e.to_string())
+            Err(e.to_string())
         }
     }
 }

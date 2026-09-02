@@ -50,6 +50,7 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
+    let fetchInterval: any;
     // Determine which window we are rendering
     const init = async () => {
       try {
@@ -58,29 +59,34 @@ function App() {
 
         if (appWindow.label === "main") {
           // Main window fetches contests on startup ONLY if 24 hours have passed
-          const lastAutoFetch = localStorage.getItem("last_auto_fetch_time");
-          const now = Date.now();
-          
-          try {
-            const cached = await invoke<any[]>("get_cached_contests");
-            const isDbEmpty = !cached || cached.length === 0;
+          const checkAndFetch = async () => {
+            const lastAutoFetch = localStorage.getItem("last_auto_fetch_time");
+            const now = Date.now();
+            
+            try {
+              const cached = await invoke<any[]>("get_cached_contests");
 
-            if (isDbEmpty || !lastAutoFetch || now - parseInt(lastAutoFetch) >= 86400000 || now < parseInt(lastAutoFetch)) {
-              fetchContests().then(() => {
+              if (!lastAutoFetch || now - parseInt(lastAutoFetch) >= 86400000 || now < parseInt(lastAutoFetch)) {
+                await fetchContests();
                 const state = useContestStore.getState();
                 if (!state.error) {
                   localStorage.setItem("last_auto_fetch_time", Date.now().toString());
                 }
-              });
-            } else {
-              // Load from cache instead of hitting the API
-              useContestStore.setState({ contests: cached, isLoading: false, error: null });
+              } else {
+                // Load from cache instead of hitting the API
+                useContestStore.setState({ contests: cached, isLoading: false, error: null });
+                const { emit } = await import("@tauri-apps/api/event");
+                emit("contests-updated", cached);
+              }
+            } catch (err) {
+              console.error("Failed to load cached contests:", err);
+              // If checking the DB fails, try to fetch anyway to recover
+              fetchContests();
             }
-          } catch (err) {
-            console.error("Failed to load cached contests:", err);
-            // If checking the DB fails, try to fetch anyway to recover
-            fetchContests();
-          }
+          };
+
+          checkAndFetch();
+          fetchInterval = setInterval(checkAndFetch, 5 * 60 * 1000); // Check every 5 minutes
           
           try {
             // Check if this is the first time running the app
@@ -113,23 +119,43 @@ function App() {
                     localStorage.setItem("last_platforms_fetch_time", Date.now().toString());
                   } catch (err) {
                     console.warn("Failed to fetch dynamic platforms, falling back to cache:", err);
-                    platforms = JSON.parse(localStorage.getItem("cached_platforms") || "[]");
+                    const cachedStr = localStorage.getItem("cached_platforms");
+                    if (cachedStr && cachedStr !== "[]") {
+                        platforms = JSON.parse(cachedStr);
+                    } else {
+                        platforms = [
+                            { id: "codeforces.com", name: "Codeforces" },
+                            { id: "leetcode.com", name: "LeetCode" },
+                            { id: "atcoder.jp", name: "AtCoder" },
+                            { id: "codechef.com", name: "CodeChef" }
+                        ];
+                    }
                   }
                 } else {
-                  platforms = JSON.parse(localStorage.getItem("cached_platforms") || "[]");
+                  const cachedStr = localStorage.getItem("cached_platforms");
+                  if (cachedStr && cachedStr !== "[]") {
+                      platforms = JSON.parse(cachedStr);
+                  } else {
+                      platforms = [
+                          { id: "codeforces.com", name: "Codeforces" },
+                          { id: "leetcode.com", name: "LeetCode" },
+                          { id: "atcoder.jp", name: "AtCoder" },
+                          { id: "codechef.com", name: "CodeChef" }
+                      ];
+                  }
                 }
                 
                 if (platforms && platforms.length > 0) {
                   const formatted = platforms.map(p => {
                     let niceName = p.name;
-                    if (niceName.includes('.')) {
-                        let parts = niceName.split('.');
-                        niceName = parts[0];
-                        // Special cases for nicer formatting
-                        if (niceName === "geeksforgeeks") niceName = "GeeksforGeeks";
-                        else if (niceName === "hackerrank") niceName = "HackerRank";
-                        else niceName = niceName.charAt(0).toUpperCase() + niceName.slice(1);
-                    }
+                    niceName = niceName.replace(/\.(com|org|net|jp|io|co)$/i, '');
+                    const parts = niceName.split('.');
+                    niceName = parts[parts.length - 1];
+                    
+                    if (niceName.toLowerCase() === "geeksforgeeks") niceName = "GeeksforGeeks";
+                    else if (niceName.toLowerCase() === "hackerrank") niceName = "HackerRank";
+                    else if (niceName.toLowerCase() === "codingninjas") niceName = "CodingNinjas";
+                    else niceName = niceName.charAt(0).toUpperCase() + niceName.slice(1);
                     return {
                       id: p.name,
                       name: niceName
@@ -159,6 +185,10 @@ function App() {
       }
     };
     init();
+
+    return () => {
+      if (fetchInterval) clearInterval(fetchInterval);
+    };
   }, [fetchContests]);
 
   const checkAutostart = async () => {
@@ -177,15 +207,8 @@ function App() {
   };
 
   const handleRefresh = async () => {
-    // The user clicked refresh, so they expect fresh data from the API!
-    // Force reset the 24 hour timer so that the backend request actually goes through.
-    localStorage.removeItem("last_auto_fetch_time");
-    localStorage.removeItem("last_platforms_fetch_time");
-    
-    await fetchContests();
-    
-    // Restart the 24 hour clock
-    localStorage.setItem("last_auto_fetch_time", Date.now().toString());
+    // The user clicked refresh, so we load fresh data from the local cache
+    await loadFromCache();
   };
 
   const toggleAutostart = async () => {
@@ -419,7 +442,7 @@ function App() {
                         onChange={() => togglePlatform(platform.id)}
                       />
                       <img
-                        src={`https://www.google.com/s2/favicons?domain=${platform.id}&sz=64`}
+                        src={`https://www.google.com/s2/favicons?domain=${platform.id.includes('.') ? platform.id : platform.id + '.com'}&sz=64`}
                         alt={platform.name}
                         className="w-4 h-4 rounded-sm object-contain"
                         onError={(e) => {

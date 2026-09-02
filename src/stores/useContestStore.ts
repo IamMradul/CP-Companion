@@ -38,6 +38,7 @@ export const useContestStore = create<ContestState>((set) => ({
       try {
         const cached = await invoke<Contest[]>("get_cached_contests");
         set({ contests: cached, isLoading: false, error: err.toString() });
+        emit("contests-updated", cached);
       } catch (cacheErr) {
         set({ error: err.toString(), isLoading: false });
       }
