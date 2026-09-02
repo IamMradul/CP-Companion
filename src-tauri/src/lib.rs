@@ -110,6 +110,18 @@ fn save_api_config(state: State<'_, AppState>, platforms: Vec<String>) -> Result
 }
 
 #[tauri::command]
+fn get_theme(state: State<'_, AppState>) -> Result<String, String> {
+    let conn = state.db.lock().unwrap();
+    database::get_theme(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_theme(state: State<'_, AppState>, theme: String) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    database::save_theme(&conn, &theme).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn get_available_platforms(
     state: State<'_, AppState>,
 ) -> Result<Vec<clist::ClistPlatform>, String> {
@@ -454,6 +466,15 @@ pub fn run() {
                 window.hide().unwrap();
                 api.prevent_close();
             }
+
+            // Restore the widget if it gets minimized (e.g., by "Show Desktop" or 3-finger swipe)
+            if window.label() == "widget" {
+                if let WindowEvent::Resized(_) = event {
+                    if window.is_minimized().unwrap_or(false) {
+                        let _ = window.unminimize();
+                    }
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             fetch_contests,
@@ -461,6 +482,8 @@ pub fn run() {
             open_main_app,
             get_api_config,
             save_api_config,
+            get_theme,
+            save_theme,
             get_available_platforms,
             check_for_updates,
             enable_autostart,

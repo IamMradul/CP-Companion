@@ -19,6 +19,7 @@ pub struct AppConfig {
     pub platforms: String,
     pub max_known_users: i64,
     pub device_id: String,
+    pub theme: String,
 }
 
 // Temporary workaround for clist API sometimes sending ints as names (rare but possible)
@@ -45,7 +46,8 @@ pub fn init_db(db_path: &std::path::Path) -> Result<Connection> {
             server_url TEXT NOT NULL,
             platforms TEXT NOT NULL,
             max_known_users INTEGER DEFAULT 0,
-            device_id TEXT NOT NULL DEFAULT ''
+            device_id TEXT NOT NULL DEFAULT '',
+            theme TEXT NOT NULL DEFAULT 'system'
         )",
         [],
     )?;
@@ -53,10 +55,11 @@ pub fn init_db(db_path: &std::path::Path) -> Result<Connection> {
     // For existing users before this update
     conn.execute("ALTER TABLE app_settings ADD COLUMN max_known_users INTEGER DEFAULT 0", []).ok();
     conn.execute("ALTER TABLE app_settings ADD COLUMN device_id TEXT NOT NULL DEFAULT ''", []).ok();
+    conn.execute("ALTER TABLE app_settings ADD COLUMN theme TEXT NOT NULL DEFAULT 'system'", []).ok();
 
     // Set defaults if empty
     let default_id = format!("device-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
-    conn.execute("INSERT OR IGNORE INTO app_settings (id, server_url, platforms, max_known_users, device_id) VALUES (1, 'http://localhost:3000/api', 'codeforces.com,leetcode.com,atcoder.jp,codechef.com,geeksforgeeks.org,hackerrank.com', 0, ?1)", [&default_id])?;
+    conn.execute("INSERT OR IGNORE INTO app_settings (id, server_url, platforms, max_known_users, device_id, theme) VALUES (1, 'https://don-airlines-registered-announcement.trycloudflare.com/api', 'codeforces.com,leetcode.com,atcoder.jp,codechef.com,geeksforgeeks.org,hackerrank.com', 0, ?1, 'system')", [&default_id])?;
 
     Ok(conn)
 }
@@ -117,7 +120,7 @@ pub fn get_upcoming_contests(conn: &Connection, platforms: &str) -> Result<Vec<C
 }
 
 pub fn get_config(conn: &Connection) -> Result<Option<AppConfig>> {
-    let mut stmt = conn.prepare("SELECT server_url, platforms, max_known_users, device_id FROM app_settings WHERE id = 1")?;
+    let mut stmt = conn.prepare("SELECT server_url, platforms, max_known_users, device_id, theme FROM app_settings WHERE id = 1")?;
     let mut rows = stmt.query([])?;
 
     if let Some(row) = rows.next()? {
@@ -132,6 +135,7 @@ pub fn get_config(conn: &Connection) -> Result<Option<AppConfig>> {
             platforms: row.get(1)?,
             max_known_users: row.get(2).unwrap_or(0),
             device_id,
+            theme: row.get(4).unwrap_or_else(|_| "system".to_string()),
         }))
     } else {
         Ok(None)
@@ -151,5 +155,20 @@ pub fn save_config(conn: &Connection, server_url: &str, platforms: &str) -> Resu
         "UPDATE app_settings SET server_url = ?1, platforms = ?2 WHERE id = 1",
         [server_url, platforms],
     )?;
+    Ok(())
+}
+
+pub fn get_theme(conn: &Connection) -> Result<String> {
+    let mut stmt = conn.prepare("SELECT theme FROM app_settings WHERE id = 1")?;
+    let mut rows = stmt.query([])?;
+    if let Some(row) = rows.next()? {
+        Ok(row.get(0).unwrap_or_else(|_| "system".to_string()))
+    } else {
+        Ok("system".to_string())
+    }
+}
+
+pub fn save_theme(conn: &Connection, theme: &str) -> Result<()> {
+    conn.execute("UPDATE app_settings SET theme = ?1 WHERE id = 1", [theme])?;
     Ok(())
 }

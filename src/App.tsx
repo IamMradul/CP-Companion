@@ -28,6 +28,16 @@ function App() {
     const initEvent = async () => {
       const { listen } = await import("@tauri-apps/api/event");
       checkAutostart();
+      
+      try {
+        const savedTheme = await invoke<"light" | "dark" | "system">("get_theme");
+        if (savedTheme) {
+          setTheme(savedTheme);
+        }
+      } catch (e) {
+        console.error("Failed to fetch theme from backend", e);
+      }
+
       listen<"light" | "dark" | "system">("theme-updated", (event) => {
         if (event.payload) {
           setTheme(event.payload);
@@ -39,14 +49,28 @@ function App() {
 
   useEffect(() => {
     const root = window.document.documentElement;
-    root.classList.remove("light", "dark");
     
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-      root.classList.add(systemTheme);
-    } else {
-      root.classList.add(theme);
-    }
+    const applyTheme = (currentTheme: "light" | "dark" | "system") => {
+      root.classList.remove("light", "dark");
+      if (currentTheme === "system") {
+        const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        root.classList.add(systemTheme);
+      } else {
+        root.classList.add(currentTheme);
+      }
+    };
+
+    applyTheme(theme);
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => {
+      if (theme === "system") {
+        applyTheme("system");
+      }
+    };
+    
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
   }, [theme]);
 
   useEffect(() => {
@@ -56,7 +80,7 @@ function App() {
       try {
         const appWindow = getCurrentWindow();
         setWindowLabel(appWindow.label);
-
+        
         if (appWindow.label === "main") {
           // Main window fetches contests on startup ONLY if 24 hours have passed
           const checkAndFetch = async () => {
@@ -78,6 +102,10 @@ function App() {
                 const { emit } = await import("@tauri-apps/api/event");
                 emit("contests-updated", cached);
               }
+              
+              // Broadcast theme to widget to ensure sync on startup
+              const { emit } = await import("@tauri-apps/api/event");
+              emit("theme-updated", useThemeStore.getState().theme);
             } catch (err) {
               console.error("Failed to load cached contests:", err);
               // If checking the DB fails, try to fetch anyway to recover
@@ -378,6 +406,11 @@ function App() {
                         key={t}
                         onClick={async () => {
                           setTheme(t);
+                          try {
+                            await invoke("save_theme", { theme: t });
+                          } catch (e) {
+                            console.error("Failed to save theme to backend", e);
+                          }
                           const { emit } = await import("@tauri-apps/api/event");
                           await emit("theme-updated", t);
                         }}

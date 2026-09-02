@@ -108,7 +108,7 @@ export function RainmeterWidget() {
     return (
       <div 
         onMouseDown={startDrag}
-        className="w-full h-full bg-white/40 dark:bg-black/40 backdrop-blur-md rounded-xl border border-black/15 dark:border-white/10 flex items-center justify-center cursor-grab active:cursor-grabbing"
+        className="w-full h-full bg-white dark:bg-[#1a1a1a] rounded-xl border border-black/15 dark:border-white/10 flex items-center justify-center cursor-grab active:cursor-grabbing"
       >
         <div className="w-4 h-4 border-2 border-black/20 dark:border-white/20 border-t-black/80 dark:border-t-white/80 rounded-full animate-spin pointer-events-none"></div>
       </div>
@@ -116,7 +116,7 @@ export function RainmeterWidget() {
   }
 
   return (
-    <div onDoubleClick={openMainApp} className="w-screen h-screen bg-white/40 dark:bg-black/40 backdrop-blur-2xl rounded-xl border border-black/15 dark:border-white/10 flex items-stretch shadow-2xl overflow-hidden relative group/widget">
+    <div onDoubleClick={openMainApp} className="w-screen h-screen bg-white dark:bg-[#1a1a1a] rounded-xl border border-black/15 dark:border-white/10 flex items-stretch shadow-2xl overflow-hidden relative group/widget">
       {/* Drag Handle */}
       <div 
         onMouseDown={startDrag}
